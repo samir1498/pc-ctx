@@ -7,16 +7,30 @@
     "build:core": "pnpm --filter @pc-ctx/core build",
     "build:cli": "pnpm --filter @pc-ctx/cli build",
     "build:mcp": "pnpm --filter @pc-ctx/mcp build",
-    "build:adapter-opencode": "pnpm --filter @pc-ctx/adapter-opencode build",
     "typecheck": "pnpm -r typecheck",
-    "lint": "pnpm -r lint",
+    "lint": "biome check",
+    "lint:fix": "biome check --apply",
+    "format": "biome format --write",
+    "format:check": "biome format",
+    "knip": "knip --config config/knip.config.ts --no-config-hints",
+    "fallow": "fallow",
+    "test": "pnpm test:unit && pnpm test:it",
+    "test:unit": "vitest run --config config/vitest.unit.config.ts",
+    "test:it": "vitest run --config config/vitest.it.config.ts",
+    "test:unit:watch": "vitest --config config/vitest.unit.config.ts",
+    "test:it:watch": "vitest --config config/vitest.it.config.ts",
     "clean": "pnpm -r clean",
-    "test": "pnpm -r test"
+    "check": "pnpm lint && pnpm knip && pnpm typecheck && pnpm test && pnpm build",
+    "tag": "npm version"
   },
   "engines": {
     "node": ">=20"
   },
   "devDependencies": {
-    "@types/node": "^26.0.0"
+    "@types/node": "^26.0.0",
+    "@vitest/coverage-v8": "^4.1.9",
+    "biome": "^0.3.3",
+    "knip": "^6.17.1",
+    "vitest": "^4.1.9"
   }
 }

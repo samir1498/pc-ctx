@@ -59,7 +59,12 @@ export const VALID_STATUSES = ['active', 'paused', 'done', 'cancelled'];
 export const VALID_TASK_STATUSES = ['pending', 'in-progress', 'done', 'blocked'];
 
 export function parsePlanFile(filepath: string): PlanFile | null {
-  const raw = readFileSync(filepath, 'utf-8');
+  let raw: string;
+  try {
+    raw = readFileSync(filepath, 'utf-8');
+  } catch {
+    return null;
+  }
   const slug = basename(filepath, '.md');
   const match = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) return null;

@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "echo ok",
     "clean": "rm -rf dist",
-    "test": "echo ok"
+    "test": "echo ok",
+    "test:unit": "vitest run --config ../../config/vitest.unit.config.ts"
   },
   "dependencies": {
     "@pc-ctx/core": "workspace:*"

@@ -15,13 +15,17 @@
     "typecheck": "tsc --noEmit",
     "lint": "echo ok",
     "clean": "rm -rf dist",
-    "test": "echo ok"
+    "test": "echo ok",
+    "test:unit": "vitest run --config ../../config/vitest.unit.config.ts",
+    "test:it": "vitest run --config ../../config/vitest.it.config.ts"
   },
   "dependencies": {
     "js-yaml": "^4.1.0"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
-    "typescript": "^5.7.0"
+    "@vitest/coverage-v8": "^4.1.9",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.9"
   }
 }

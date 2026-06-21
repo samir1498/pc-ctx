@@ -1,0 +1,4 @@
+{
+  "entry": ["packages/core/src/index.ts", "packages/cli/src/index.ts", "packages/mcp/src/index.ts"],
+  "workspaces": ["packages/*"]
+}
