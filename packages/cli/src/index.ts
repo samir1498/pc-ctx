@@ -1,12 +1,494 @@
 #!/usr/bin/env node
+import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from 'fs';
+import { spawnSync } from 'child_process';
+import { join, dirname, relative } from 'path';
 import { defineCommand, createMain } from 'citty';
+import yaml from 'js-yaml';
+import {
+  readAllPlans,
+  findPlan,
+  parsePlanFile,
+  serializePlanFile,
+  listResearchFiles,
+  findResearchFile,
+  resolveRef,
+  collectRefs,
+  fmtTasks,
+  fmtPrio,
+  fmtCell,
+  statusBadge,
+  slugify,
+  VALID_STATUSES,
+  VALID_TASK_STATUSES,
+  SCAFFOLD_FILES,
+} from '@pc-ctx/core';
+
+const ROOT = process.env.PC_CTX_ROOT || process.cwd();
+const PLANS_DIR = join(ROOT, 'plans');
+const ROADMAPS_DIR = join(ROOT, 'roadmaps');
+const RESEARCH_DIR = process.env.PC_CTX_RESEARCH_DIR || join(ROOT, '..', 'personal-research');
+
+const listCmd = defineCommand({
+  meta: { name: 'list', description: 'List all plans' },
+  args: {
+    status: { type: 'string', description: 'Filter by status', required: false },
+    category: { type: 'string', description: 'Filter by category', required: false },
+    sort: { type: 'string', description: 'Sort field (priority)', required: false },
+  },
+  run({ args }) {
+    const plans = readAllPlans(PLANS_DIR);
+    const filtered = plans.filter(p => {
+      if (args.status && p.frontmatter.status !== args.status) return false;
+      if (args.category && p.frontmatter.category !== args.category) return false;
+      return true;
+    });
+    const sorted = [...filtered];
+    if (args.sort === 'priority') sorted.sort((a, b) => (b.frontmatter.priority || 0) - (a.frontmatter.priority || 0));
+    else sorted.sort((a, b) => String(a.frontmatter.created).localeCompare(String(b.frontmatter.created)));
+
+    const rows = ['| Slug | Status | Category | Prio | Tasks | Tldr |', '|------|--------|----------|------|-------|------|'];
+    for (const p of sorted) {
+      const f = p.frontmatter;
+      rows.push(`| ${fmtCell(f.slug, 30)} | ${fmtCell(f.status, 8)} | ${fmtCell(f.category, 8)} | ${fmtPrio(f.priority).padStart(4)} | ${fmtTasks(f.tasks).padStart(5)} | ${fmtCell(f.tldr, 40)} |`);
+    }
+    console.log(rows.join('\n'));
+  },
+});
+
+const showCmd = defineCommand({
+  meta: { name: 'show', description: 'Show plan details' },
+  args: { slug: { type: 'positional', description: 'Plan slug', required: true } },
+  run({ args }) {
+    const plan = findPlan(PLANS_DIR, ROADMAPS_DIR, args.slug);
+    if (!plan) { console.error(`error: plan "${args.slug}" not found`); process.exit(1); }
+    const f = plan.frontmatter;
+    const lines: string[] = [];
+    lines.push(`## ${f.slug} — ${f.title}`);
+    lines.push(`**Status:** ${statusBadge(f.status)}${f.category ? ` · **Category:** ${f.category}` : ''} · **Priority:** ${fmtPrio(f.priority)}`);
+    lines.push('', `**TLDR:** ${f.tldr}`, '');
+
+    if (f.tasks?.length) {
+      lines.push(`### Tasks (${fmtTasks(f.tasks)})`);
+      lines.push('| ID | Status | Description |', '|----|--------|-------------|');
+      for (const t of f.tasks) {
+        const refs = t.refs?.length ? ` ${t.refs.map(r => resolveRef(r, PLANS_DIR, ROADMAPS_DIR, RESEARCH_DIR)).map(ri => `\`${ri.label}\``).join(' ')}` : '';
+        lines.push(`| ${fmtCell(t.id, 20)} | ${fmtCell(t.status, 11)} | ${t.desc || t.title || '—'}${refs} |`);
+      }
+      lines.push('');
+    }
+    if (f.acceptance?.length) {
+      const items = f.acceptance.map(a => typeof a === 'string' ? { id: '', desc: a, status: 'pending' } : a);
+      const done = items.filter((a: { status?: string }) => a.status === 'done').length;
+      lines.push(`### Acceptance (${done}/${items.length})`);
+      lines.push('| ID | Status | Criteria |', '|----|--------|----------|');
+      for (const a of items) lines.push(`| ${fmtCell(a.id || '', 15)} | ${fmtCell(a.status || 'pending', 11)} | ${a.desc} |`);
+      lines.push('');
+    }
+
+    const refs = collectRefs(plan);
+    if (refs.length) {
+      lines.push('### References');
+      for (const r of refs) {
+        const resolved = resolveRef(r, PLANS_DIR, ROADMAPS_DIR, RESEARCH_DIR);
+        lines.push(`- \`${resolved.label}\` — ${resolved.description || resolved.target}${resolved.type === 'research' && findResearchFile(RESEARCH_DIR, resolved.target) ? ` (\`research show ${resolved.target}\`)` : ''}`);
+      }
+      lines.push('');
+    }
+
+    const allDocs = [...readAllPlans(PLANS_DIR), ...readAllPlans(ROADMAPS_DIR)];
+    const backlinks = allDocs.filter(d => d.slug !== plan.slug && collectRefs(d).some(r => r === `plan:${plan.slug}`));
+    if (backlinks.length) {
+      lines.push('### Referenced by');
+      for (const b of backlinks) lines.push(`- \`${b.slug}\` — ${b.frontmatter.tldr}`);
+      lines.push('');
+    }
+
+    if (f.entries?.length) {
+      lines.push('### Entries');
+      for (const e of f.entries) lines.push(`- **${e.ref}** — ${e.status || ''}${e.note ? ` · ${e.note}` : ''}`);
+      lines.push('');
+    }
+    console.log(lines.join('\n'));
+  },
+});
+
+const statusCmd = defineCommand({
+  meta: { name: 'status', description: 'Grouped status overview' },
+  run() {
+    const plans = readAllPlans(PLANS_DIR);
+    const active = plans.filter(p => p.frontmatter.status === 'active');
+    const paused = plans.filter(p => p.frontmatter.status === 'paused');
+    const done = plans.filter(p => p.frontmatter.status === 'done');
+
+    const lines: string[] = [];
+    lines.push('## Status Overview', '', `**${active.length} active · ${paused.length} paused · ${done.length} done**`, '');
+
+    if (active.length) {
+      lines.push('### Active');
+      const byCat: Record<string, typeof active> = {};
+      for (const p of active) {
+        const cat = p.frontmatter.category || 'other';
+        (byCat[cat] ||= []).push(p);
+      }
+      for (const [cat, catPlans] of Object.entries(byCat).sort()) {
+        lines.push(`**${cat}**`);
+        for (const p of catPlans) {
+          const f = p.frontmatter;
+          lines.push(`  - \`${f.slug}\`${f.priority ? ` · prio ${f.priority}` : ''}${f.tasks ? ` · ${fmtTasks(f.tasks)} tasks` : ''}`, `    ${f.tldr}`);
+        }
+        lines.push('');
+      }
+    }
+    if (paused.length) {
+      lines.push('### Paused');
+      for (const p of paused) lines.push(`  - \`${p.frontmatter.slug}\` · ${p.frontmatter.tldr}`);
+      lines.push('');
+    }
+    console.log(lines.join('\n'));
+  },
+});
+
+const validateCmd = defineCommand({
+  meta: { name: 'validate', description: 'Validate all plan files' },
+  run() {
+    const plans = readAllPlans(PLANS_DIR);
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    for (const p of plans) {
+      const f = p.frontmatter;
+      for (const field of ['title', 'slug', 'status', 'category', 'created', 'tldr']) {
+        if (f[field] == null || f[field] === '') errors.push(`${f.slug}: missing required field "${field}"`);
+      }
+      if (f.status && !VALID_STATUSES.includes(f.status)) errors.push(`${f.slug}: invalid status "${f.status}"`);
+      if (f.tasks) for (const t of f.tasks) if (!VALID_TASK_STATUSES.includes(t.status)) errors.push(`${f.slug}.tasks.${t.id}: invalid status "${t.status}"`);
+      if (f.created && typeof f.created !== 'number') warnings.push(`${f.slug}: "created" should be a number, got "${f.created}"`);
+    }
+
+    console.log('## Validate', '', `Checked ${plans.length} plan files.`, '');
+    if (errors.length) { console.log(`### Errors (${errors.length})`); for (const e of errors) console.log(`- ✗ ${e}`); console.log(''); }
+    if (warnings.length) { console.log(`### Warnings (${warnings.length})`); for (const w of warnings) console.log(`- ⚠ ${w}`); console.log(''); }
+    if (!errors.length && !warnings.length) console.log('All files valid ✅', '');
+  },
+});
+
+const planSetStatusCmd = defineCommand({
+  meta: { name: 'set-status', description: 'Update plan status' },
+  args: {
+    slug: { type: 'positional', description: 'Plan slug', required: true },
+    status: { type: 'positional', description: 'New status', required: true },
+  },
+  run({ args }) {
+    if (!VALID_STATUSES.includes(args.status)) { console.error(`error: invalid status "${args.status}"`); return; }
+    const plan = readAllPlans(PLANS_DIR).find(p => p.slug === args.slug);
+    if (!plan) { console.error(`error: plan "${args.slug}" not found`); return; }
+    plan.frontmatter.status = args.status;
+    writeFileSync(join(plan.dir, plan.filename), serializePlanFile(plan), 'utf-8');
+    console.log(`ok: ${args.slug} status → ${args.status}`);
+  },
+});
+
+const planTaskStatusCmd = defineCommand({
+  meta: { name: 'task-status', description: 'Update task status' },
+  args: {
+    slug: { type: 'positional', description: 'Plan slug', required: true },
+    id: { type: 'positional', description: 'Task ID', required: true },
+    status: { type: 'positional', description: 'New status', required: true },
+  },
+  run({ args }) {
+    if (!VALID_TASK_STATUSES.includes(args.status)) { console.error(`error: invalid task status "${args.status}"`); return; }
+    const plan = readAllPlans(PLANS_DIR).find(p => p.slug === args.slug);
+    if (!plan) { console.error(`error: plan "${args.slug}" not found`); return; }
+    if (!plan.frontmatter.tasks) { console.error(`error: plan "${args.slug}" has no tasks`); return; }
+    const task = plan.frontmatter.tasks.find(t => t.id === args.id);
+    if (!task) { console.error(`error: task "${args.id}" not found in "${args.slug}"`); return; }
+    task.status = args.status;
+    writeFileSync(join(plan.dir, plan.filename), serializePlanFile(plan), 'utf-8');
+    console.log(`ok: ${args.slug}.tasks.${args.id} → ${args.status}`);
+  },
+});
+
+const planAddTaskCmd = defineCommand({
+  meta: { name: 'add-task', description: 'Add a task to a plan' },
+  args: {
+    slug: { type: 'positional', description: 'Plan slug', required: true },
+    id: { type: 'positional', description: 'Task ID', required: true },
+    desc: { type: 'positional', description: 'Task description', required: true },
+    status: { type: 'positional', description: 'Initial status', required: true },
+  },
+  run({ args }) {
+    if (!VALID_TASK_STATUSES.includes(args.status)) { console.error(`error: invalid task status "${args.status}"`); return; }
+    const plan = readAllPlans(PLANS_DIR).find(p => p.slug === args.slug);
+    if (!plan) { console.error(`error: plan "${args.slug}" not found`); return; }
+    if (!plan.frontmatter.tasks) plan.frontmatter.tasks = [];
+    if (plan.frontmatter.tasks.some((t: { id: string }) => t.id === args.id)) { console.error(`error: task "${args.id}" already exists in "${args.slug}"`); return; }
+    plan.frontmatter.tasks.push({ id: args.id, desc: args.desc, status: args.status });
+    writeFileSync(join(plan.dir, plan.filename), serializePlanFile(plan), 'utf-8');
+    console.log(`ok: ${args.slug}.tasks.${args.id} added (${args.status})`);
+  },
+});
+
+const planAddCmd = defineCommand({
+  meta: { name: 'add', description: 'Create a new plan' },
+  args: {
+    title: { type: 'positional', description: 'Plan title', required: true },
+    category: { type: 'string', description: 'Plan category', default: 'other', required: false },
+    priority: { type: 'string', description: 'Priority (0-100)', required: false },
+    status: { type: 'string', description: 'Initial status', default: 'active', required: false },
+    tldr: { type: 'string', description: 'One-line summary', default: 'TODO: add summary', required: false },
+    ref: { type: 'string', description: 'Reference (research:<slug>, plan:<slug>, url:<url>)', required: false },
+  },
+  run({ args }) {
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const slug = slugify(args.title);
+    const filename = `${today}-${slug}.md`;
+    const filepath = join(PLANS_DIR, filename);
+    if (existsSync(filepath)) { console.error(`error: file "${filename}" already exists`); return; }
+
+    const frontmatter = {
+      title: args.title,
+      slug,
+      status: args.status,
+      category: args.category,
+      created: parseInt(today),
+      tldr: args.tldr,
+      priority: args.priority ? parseInt(args.priority) : undefined,
+      tasks: [],
+      acceptance: [],
+      references: args.ref ? [args.ref] : undefined,
+    };
+    const body = `# ${args.title}\n\n## Goal\n\nTODO: define goal\n\n## Scope\n\nTODO: define scope\n`;
+    writeFileSync(filepath, `---\n${yaml.dump(frontmatter, { lineWidth: 120, quotingType: "'", forceQuotes: false, noCompatMode: true })}---\n${body}\n`, 'utf-8');
+    console.log(`ok: created plan "${slug}" at plans/${filename}`);
+  },
+});
+
+const planRefsCmd = defineCommand({
+  meta: { name: 'references', description: 'Show plan references and backlinks' },
+  args: { slug: { type: 'positional', description: 'Plan slug', required: true } },
+  run({ args }) {
+    const plan = findPlan(PLANS_DIR, ROADMAPS_DIR, args.slug);
+    if (!plan) { console.error(`error: plan "${args.slug}" not found`); return; }
+
+    const lines: string[] = [];
+    lines.push(`## References for ${args.slug}`, '');
+
+    const refs = collectRefs(plan);
+    if (refs.length) {
+      lines.push('### Outbound references');
+      for (const r of refs) {
+        const resolved = resolveRef(r, PLANS_DIR, ROADMAPS_DIR, RESEARCH_DIR);
+        lines.push(`- \`${resolved.label}\` (${resolved.type}) — ${resolved.description || resolved.target}`);
+      }
+      lines.push('');
+    } else {
+      lines.push('No outbound references.', '');
+    }
+
+    const allDocs = [...readAllPlans(PLANS_DIR), ...readAllPlans(ROADMAPS_DIR)];
+    const backlinks = allDocs.filter(d => d.slug !== plan.slug && collectRefs(d).some(r => r === `plan:${args.slug}`));
+    if (backlinks.length) {
+      lines.push('### Inbound references (backlinks)');
+      for (const b of backlinks) lines.push(`- \`${b.slug}\` — ${b.frontmatter.tldr}`);
+      lines.push('');
+    } else {
+      lines.push('No inbound references.', '');
+    }
+
+    console.log(lines.join('\n'));
+  },
+});
+
+const planCmd = defineCommand({
+  meta: { name: 'plan', description: 'Manage plans' },
+  subCommands: {
+    'set-status': planSetStatusCmd,
+    'task-status': planTaskStatusCmd,
+    add: planAddCmd,
+    'add-task': planAddTaskCmd,
+    references: planRefsCmd,
+  },
+});
+
+const roadmapListCmd = defineCommand({
+  meta: { name: 'list', description: 'List all roadmaps' },
+  run() {
+    const roadmaps = readAllPlans(ROADMAPS_DIR);
+    const rows = ['| Slug | Status | Period | Prio | Entries | Tldr |', '|------|--------|--------|------|---------|------|'];
+    for (const r of roadmaps) {
+      const f = r.frontmatter;
+      rows.push(`| ${fmtCell(f.slug, 25)} | ${fmtCell(f.status, 8)} | ${fmtCell(f.period || '—', 6)} | ${fmtPrio(f.priority).padStart(4)} | ${String(f.entries?.length ?? 0).padStart(3)}  | ${fmtCell(f.tldr, 40)} |`);
+    }
+    console.log(rows.join('\n'));
+  },
+});
+
+const roadmapShowCmd = defineCommand({
+  meta: { name: 'show', description: 'Show roadmap details' },
+  args: { slug: { type: 'positional', description: 'Roadmap slug', required: true } },
+  run({ args }) {
+    const plan = findPlan(PLANS_DIR, ROADMAPS_DIR, args.slug);
+    if (!plan) { console.error(`error: roadmap "${args.slug}" not found`); return; }
+    const f = plan.frontmatter;
+    const lines: string[] = [];
+    lines.push(`## ${f.slug} — ${f.title}`);
+    lines.push(`**Status:** ${statusBadge(f.status)} · **Priority:** ${fmtPrio(f.priority)}`);
+    lines.push('', `**TLDR:** ${f.tldr}`, '');
+    if (f.entries?.length) {
+      lines.push('### Entries');
+      for (const e of f.entries) lines.push(`- **${e.ref}** — ${e.status || ''}${e.note ? ` · ${e.note}` : ''}`);
+      lines.push('');
+    }
+    console.log(lines.join('\n'));
+  },
+});
+
+const roadmapCmd = defineCommand({
+  meta: { name: 'roadmap', description: 'Manage roadmaps' },
+  subCommands: {
+    list: roadmapListCmd,
+    show: roadmapShowCmd,
+  },
+});
+
+const researchListCmd = defineCommand({
+  meta: { name: 'list', description: 'List research files' },
+  run() {
+    const files = listResearchFiles(RESEARCH_DIR);
+    if (!files.length) { console.log('No research files found.'); return; }
+    const rows = ['| Slug | File |', '|------|------|'];
+    for (const f of files) rows.push(`| ${fmtCell(f.slug, 40)} | ${fmtCell(relative(RESEARCH_DIR, f.filepath), 50)} |`);
+    console.log(rows.join('\n'));
+  },
+});
+
+const researchShowCmd = defineCommand({
+  meta: { name: 'show', description: 'Show research file' },
+  args: { slug: { type: 'positional', description: 'Research file slug or path', required: true } },
+  run({ args }) {
+    const file = findResearchFile(RESEARCH_DIR, args.slug);
+    if (!file) { console.error(`error: research file "${args.slug}" not found`); return; }
+    console.log(`## ${file.slug}`);
+    console.log(`*File: ${relative(RESEARCH_DIR, file.filepath)}*\n`);
+    console.log(file.content);
+  },
+});
+
+const researchCmd = defineCommand({
+  meta: { name: 'research', description: 'Browse research files' },
+  subCommands: {
+    list: researchListCmd,
+    show: researchShowCmd,
+  },
+});
+
+const graphCmd = defineCommand({
+  meta: { name: 'graph', description: 'Show inter-plan dependency graph' },
+  args: { slug: { type: 'positional', description: 'Filter to a specific plan', required: false } },
+  run({ args }) {
+    const allDocs = [...readAllPlans(PLANS_DIR), ...readAllPlans(ROADMAPS_DIR)];
+    const lines: string[] = [];
+
+    if (args.slug) {
+      const plan = findPlan(PLANS_DIR, ROADMAPS_DIR, args.slug);
+      if (!plan) { console.error(`error: plan "${args.slug}" not found`); return; }
+      lines.push(`## Dependency graph for ${args.slug}`, '');
+      const refs = collectRefs(plan);
+      for (const r of refs) {
+        const resolved = resolveRef(r, PLANS_DIR, ROADMAPS_DIR, RESEARCH_DIR);
+        const arrow = resolved.type === 'plan' || resolved.type === 'research' ? '→' : '↗';
+        lines.push(`  ${args.slug} ${arrow} ${resolved.label}  ${resolved.description ? `— ${resolved.description}` : ''}`);
+      }
+      const backlinks = allDocs.filter(d => d.slug !== plan.slug && collectRefs(d).some(r => r === `plan:${args.slug}`));
+      for (const b of backlinks) lines.push(`  ${b.slug} → ${args.slug}`);
+    } else {
+      lines.push('## Full dependency graph', '');
+      for (const doc of allDocs) {
+        const refs = collectRefs(doc);
+        if (refs.length) for (const r of refs) {
+          const resolved = resolveRef(r, PLANS_DIR, ROADMAPS_DIR, RESEARCH_DIR);
+          lines.push(`  ${doc.slug} → ${resolved.label}`);
+        }
+      }
+    }
+
+    if (lines.length <= 2) console.log('No graph edges found.');
+    else console.log(lines.join('\n'));
+  },
+});
+
+const setupCmd = defineCommand({
+  meta: { name: 'setup', description: 'Scaffold a new personal-context in the current directory' },
+  args: {
+    dir: { type: 'string', description: 'Target directory', default: '.', required: false },
+    remote: { type: 'string', description: 'Git remote URL', required: false },
+  },
+  async run({ args }) {
+    const base = args.dir.startsWith('/') ? args.dir : join(process.cwd(), args.dir);
+    const target = join(base, 'personal-context');
+
+    if (existsSync(target)) {
+      if (existsSync(join(target, '.git'))) { console.error(`error: "${target}" already exists and is a git repo`); return; }
+      const files = readdirSync(target);
+      if (files.length > 0) { console.error(`error: "${target}" already exists and is not empty`); return; }
+    }
+
+    const dirs = ['', 'bin', 'plans', 'roadmaps', 'progress', 'ideas', 'references', 'archive'];
+    for (const d of dirs) mkdirSync(join(target, d), { recursive: true });
+
+    for (const [filepath, content] of Object.entries(SCAFFOLD_FILES)) {
+      writeFileSync(join(target, filepath), content, 'utf-8');
+    }
+
+    const pkg = { name: 'personal-context', private: true, type: 'module', scripts: { ctx: 'bun run bin/ctx.ts' }, dependencies: { '@pc-ctx/cli': '^0.1.0' } };
+    writeFileSync(join(target, 'package.json'), JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
+
+    const proxyBin = `#!/usr/bin/env node\nimport('@pc-ctx/cli').catch(() => {\n  console.error('Install @pc-ctx/cli first: pnpm add @pc-ctx/cli');\n  process.exit(1);\n});\n`;
+    writeFileSync(join(target, 'bin', 'ctx.ts'), proxyBin, 'utf-8');
+    console.log(`\nDone! Context created at ${target}`);
+    console.log(`\nNext steps:`);
+    console.log(`  cd ${target}`);
+    console.log(`  bun i && bun run ctx status`);
+    if (args.remote) console.log(`  git init && git add -A && git commit -m "initial: scaffold" && git remote add origin ${args.remote} && git push -u origin main`);
+  },
+});
+
+const syncCmd = defineCommand({
+  meta: { name: 'sync', description: 'Sync plans to/from GitHub remote' },
+  args: {
+    push: { type: 'boolean', description: 'Push only', default: false, required: false },
+    pull: { type: 'boolean', description: 'Pull only', default: false, required: false },
+  },
+  run({ args }) {
+    const repo = ROOT;
+    if (!args.push) {
+      console.log('Pulling from remote...');
+      const pull = spawnSync('git', ['pull'], { cwd: repo, stdio: 'inherit' });
+      if (pull.status !== 0) { console.error('error: pull failed'); return; }
+    }
+    if (!args.pull) {
+      console.log('Pushing to remote...');
+      const push = spawnSync('git', ['push'], { cwd: repo, stdio: 'inherit' });
+      if (push.status !== 0) { console.error('error: push failed'); return; }
+    }
+    console.log('Done ✅');
+  },
+});
 
 const mainCmd = defineCommand({
-  meta: {
-    name: 'ctx',
-    description: 'personal-context CLI — plan, roadmap, and research management',
+  meta: { name: 'ctx', description: 'personal-context CLI — plan, roadmap, and research management' },
+  subCommands: {
+    list: listCmd,
+    show: showCmd,
+    status: statusCmd,
+    validate: validateCmd,
+    plan: planCmd,
+    roadmap: roadmapCmd,
+    research: researchCmd,
+    graph: graphCmd,
+    setup: setupCmd,
+    sync: syncCmd,
   },
-  subCommands: {},
 });
 
 const main = createMain(mainCmd);

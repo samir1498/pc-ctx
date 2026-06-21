@@ -12,16 +12,6 @@ importers:
         specifier: ^26.0.0
         version: 26.0.0
 
-  adapters/opencode:
-    dependencies:
-      '@pc-ctx/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-    devDependencies:
-      typescript:
-        specifier: ^5.7.0
-        version: 5.9.3
-
   packages/cli:
     dependencies:
       '@pc-ctx/core':
