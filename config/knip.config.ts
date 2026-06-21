@@ -3,7 +3,7 @@ export default {
   project: ['packages/*/src/**/*.ts'],
   ignore: ['packages/*/src/**/*.spec.ts'],
   ignoreExportsUsedInFile: true,
-  ignoreBinaries: ['fallow'],
+  ignoreBinaries: ['fallow', 'dot'],
   ignoreDependencies: [
     '@types/node',
     '@vitest/coverage-v8',
