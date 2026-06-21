@@ -20,7 +20,11 @@
     "test:unit:watch": "vitest --config config/vitest.unit.config.ts",
     "test:it:watch": "vitest --config config/vitest.it.config.ts",
     "clean": "pnpm -r clean",
-    "check": "pnpm lint && pnpm knip && pnpm typecheck && pnpm test && pnpm build",
+    "depcruise": "depcruise packages --config config/.dependency-cruiser.cjs",
+    "depcruise:graph": "depcruise packages --config config/.dependency-cruiser.cjs --output-type dot | dot -T png > graph.png",
+    "depcruise:graph:svg": "depcruise packages --config config/.dependency-cruiser.cjs --output-type dot | dot -T svg > graph.svg",
+    "check": "pnpm lint && pnpm knip && pnpm typecheck && pnpm depcruise && pnpm test && pnpm build",
+    "check:ci": "pnpm lint && pnpm knip && pnpm typecheck && pnpm depcruise && pnpm test:unit && pnpm build",
     "tag": "npm version"
   },
   "engines": {
@@ -30,6 +34,7 @@
     "@types/node": "^26.0.0",
     "@vitest/coverage-v8": "^4.1.9",
     "biome": "^0.3.3",
+    "dependency-cruiser": "^17.4.3",
     "knip": "^6.17.1",
     "vitest": "^4.1.9"
   }

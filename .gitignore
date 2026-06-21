@@ -4,3 +4,5 @@ dist/
 *.tsbuildinfo
 .env
 .env.local
+graph.png
+graph.svg
