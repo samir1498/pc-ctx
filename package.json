@@ -1,0 +1,22 @@
+{
+  "name": "pc-ctx",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build",
+    "build:core": "pnpm --filter @pc-ctx/core build",
+    "build:cli": "pnpm --filter @pc-ctx/cli build",
+    "build:mcp": "pnpm --filter @pc-ctx/mcp build",
+    "build:adapter-opencode": "pnpm --filter @pc-ctx/adapter-opencode build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "clean": "pnpm -r clean",
+    "test": "pnpm -r test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0"
+  }
+}

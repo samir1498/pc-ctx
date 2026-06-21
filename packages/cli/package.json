@@ -1,0 +1,29 @@
+{
+  "name": "@pc-ctx/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "ctx": "./dist/index.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo ok",
+    "clean": "rm -rf dist",
+    "test": "echo ok"
+  },
+  "dependencies": {
+    "@pc-ctx/core": "workspace:*",
+    "citty": "^0.2.2",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "typescript": "^5.7.0"
+  }
+}
