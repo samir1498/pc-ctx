@@ -1,6 +1,6 @@
 {
   "name": "@pc-ctx/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "CLI for managing markdown-based plans with YAML frontmatter — list, show, status, validate, sync, and more",
   "type": "module",
   "bin": {
@@ -35,7 +35,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@pc-ctx/core": "workspace:*",
+    "@pc-ctx/core": "workspace:^",
     "citty": "^0.2.2",
     "js-yaml": "^4.1.0"
   },

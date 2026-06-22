@@ -1,8 +1,11 @@
 {
   "name": "@pc-ctx/mcp",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "MCP server exposing pc-ctx plans as AI agent tools — plan_list, plan_show, plan_status, plan_validate",
   "type": "module",
+  "bin": {
+    "pc-ctx-mcp": "dist/main.js"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -35,7 +38,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.0",
-    "@pc-ctx/core": "workspace:*",
+    "@pc-ctx/core": "workspace:^",
     "zod": "^3.24.0"
   },
   "devDependencies": {

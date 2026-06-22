@@ -30,7 +30,7 @@ importers:
   packages/cli:
     dependencies:
       '@pc-ctx/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../core
       citty:
         specifier: ^0.2.2
@@ -71,7 +71,7 @@ importers:
         specifier: ^1.17.0
         version: 1.29.0(zod@3.25.76)
       '@pc-ctx/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../core
       zod:
         specifier: ^3.24.0
