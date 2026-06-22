@@ -117,29 +117,35 @@ export function findPlan(plansDir: string, roadmapsDir: string, slug: string): P
 
 export function listResearchFiles(researchDir: string): { slug: string; filepath: string; title: string }[] {
   if (!existsSync(researchDir)) return [];
-  const entries = readdirSync(researchDir, { withFileTypes: true });
   const files: { slug: string; filepath: string; title: string }[] = [];
 
-  for (const entry of entries) {
-    if (entry.name.startsWith('.') || entry.name === 'README.md' || entry.name === 'INDEX.md') continue;
-    const fullPath = join(researchDir, entry.name);
-    if (entry.isDirectory()) {
-      for (const sub of readdirSync(fullPath, { withFileTypes: true })) {
-        if (!sub.name.endsWith('.md') || sub.name.startsWith('.')) continue;
-        const slug = basename(sub.name, '.md');
-        files.push({ slug, filepath: join(fullPath, sub.name), title: slug.replace(/-/g, ' ') });
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+      } else if (entry.name.endsWith('.md') && entry.name !== 'README.md' && entry.name !== 'INDEX.md') {
+        // slug = path relative to the research root, sans extension, so it is unique across folders
+        const slug = relative(researchDir, fullPath).replace(/\\/g, '/').replace(/\.md$/, '');
+        files.push({ slug, filepath: fullPath, title: basename(slug).replace(/-/g, ' ') });
       }
-    } else if (entry.name.endsWith('.md')) {
-      const slug = basename(entry.name, '.md');
-      files.push({ slug, filepath: fullPath, title: slug.replace(/-/g, ' ') });
     }
-  }
+  };
+
+  walk(researchDir);
   return files;
 }
 
 export function findResearchFile(researchDir: string, slugOrPath: string): { slug: string; filepath: string; content: string } | null {
   const files = listResearchFiles(researchDir);
-  const match = files.find(f => f.slug === slugOrPath || f.filepath.endsWith(slugOrPath));
+  // Prefer an exact full-slug (path) match; it is always unambiguous.
+  let match = files.find(f => f.slug === slugOrPath);
+  if (!match) {
+    // Fall back to a bare basename or path-suffix match, but only when it resolves to one file.
+    const candidates = files.filter((f) => basename(f.slug) === slugOrPath || f.filepath.endsWith(slugOrPath));
+    if (candidates.length === 1) match = candidates[0];
+  }
   if (!match) return null;
   return { ...match, content: readFileSync(match.filepath, 'utf-8') };
 }
