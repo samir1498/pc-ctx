@@ -543,14 +543,38 @@ function serveStatic(port: number, dir: string, pat?: string) {
     '.woff2': 'font/woff2',
   };
 
-  const server = createServer((req, res) => {
-    if (req.url === '/api/env' && pat) {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ GITHUB_TOKEN: pat }));
+  const server = createServer(async (req, res) => {
+    const url = req.url || '';
+
+    if (url.startsWith('/api/')) {
+      const repo = pat ? `https://api.github.com/repos/${getRepo()}/contents` : null;
+      if (!repo) {
+        res.writeHead(403);
+        res.end('API calls require a GitHub PAT. Run: ctx config --pat <token>');
+        return;
+      }
+      const ghPath = url.replace('/api/', '');
+      const ghUrl = `https://api.github.com/repos/${getRepo()}/contents/${ghPath}?ref=main`;
+      const headers: Record<string, string> = {
+        Accept: url.includes('/progress/') || url.includes('/references/') || url.includes('/ideas/') || url.includes('/plans/') || url.includes('/roadmaps/')
+          ? 'application/vnd.github.raw+json'
+          : 'application/vnd.github.v3+json',
+        'User-Agent': 'pc-ctx',
+      };
+      if (pat) headers.Authorization = `Bearer ${pat}`;
+      try {
+        const ghRes = await fetch(ghUrl, { headers });
+        const body = await ghRes.text();
+        res.writeHead(ghRes.status, { 'Content-Type': 'application/json' });
+        res.end(body);
+      } catch {
+        res.writeHead(502);
+        res.end('Proxy error');
+      }
       return;
     }
 
-    let filePath = join(dir, req.url === '/' ? 'index.html' : req.url || '');
+    let filePath = join(dir, url === '/' ? 'index.html' : url || '');
     if (!existsSync(filePath) || !filePath.startsWith(dir)) {
       filePath = join(dir, 'index.html');
     }
@@ -565,6 +589,15 @@ function serveStatic(port: number, dir: string, pat?: string) {
     console.log(` Web UI running at http://localhost:${port}`);
     console.log(` Press Ctrl+C to stop`);
   });
+}
+
+function getRepo() {
+  try {
+    const cfg = JSON.parse(readFileSync(join(homedir(), '.pc-ctx', 'config.json'), 'utf-8'));
+    return cfg.repo || 'samir1498/personal-context';
+  } catch {
+    return 'samir1498/personal-context';
+  }
 }
 
 const uiCmd = defineCommand({
@@ -601,7 +634,7 @@ const uiCmd = defineCommand({
     }
 
     if (args.serve) {
-      serveStatic(parseInt(args.port), UI_CACHE, pat);
+      serveStatic(parseInt(args.port), UI_CACHE, pat || undefined);
       await new Promise(() => {}); // keep alive
     }
   },
