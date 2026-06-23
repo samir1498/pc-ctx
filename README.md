@@ -39,6 +39,12 @@ ctx roadmap show <slug>
 ctx research list
 ctx research show <slug>
 
+# Web UI (local)
+ctx ui                        # download + cache latest
+ctx ui --serve                # download + serve on localhost
+ctx ui --serve --port 8080    # custom port
+ctx ui --update               # force re-download
+
 # Graph & sync
 ctx graph                     # dependency graph
 ctx graph <slug>              # graph for one plan
