@@ -595,6 +595,91 @@ const configCmd = defineCommand({
   },
 });
 
+const IDEAS_DIR = join(ROOT, 'ideas');
+const PROCESSES_DIR = join(ROOT, 'processes');
+const PROGRESS_DIR = join(ROOT, 'progress');
+const REFERENCES_DIR = join(ROOT, 'references');
+const ARCHIVE_DIR = join(ROOT, 'archive');
+
+function makeDomainCmd(name: string, description: string, dir: string) {
+  const listCmd = defineCommand({
+    meta: { name: 'list', description: `List all ${name}` },
+    run() {
+      const items = readAllPlans(dir);
+      if (!items.length) { console.log(`No ${name} found.`); return; }
+      const rows = ['| Slug | Title |', '|------|-------|'];
+      for (const p of items) rows.push(`| ${fmtCell(p.slug, 40)} | ${fmtCell(p.frontmatter.title || '—', 60)} |`);
+      console.log(rows.join('\n'));
+    },
+  });
+
+  const showCmd = defineCommand({
+    meta: { name: 'show', description: `Show ${name} details` },
+    args: { slug: { type: 'positional', description: `${name} slug`, required: true } },
+    run({ args }) {
+      const item = readAllPlans(dir).find(p => p.slug === args.slug);
+      if (!item) { console.error(`error: "${args.slug}" not found`); return; }
+      console.log(`## ${item.frontmatter.title || item.slug}`);
+      console.log(`**Slug:** ${item.slug}`);
+      if (item.body) console.log('', item.body);
+    },
+  });
+
+  const addCmd = defineCommand({
+    meta: { name: 'add', description: `Create a new ${name}` },
+    args: {
+      title: { type: 'positional', description: 'Title', required: true },
+      slug: { type: 'string', description: 'Slug (defaults from title)', required: false },
+    },
+    run({ args }) {
+      const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const slug = args.slug || slugify(args.title);
+      const filename = `${today}-${slug}.md`;
+      const filepath = join(dir, filename);
+      if (existsSync(filepath)) { console.error(`error: "${filename}" already exists`); return; }
+      const frontmatter: Record<string, unknown> = { title: args.title, slug, created: parseInt(today) };
+      writeFileSync(filepath, `---\n${yaml.dump(frontmatter, { lineWidth: 120 })}---\n`, 'utf-8');
+      console.log(`ok: created ${filename}`);
+    },
+  });
+
+  return defineCommand({
+    meta: { name, description },
+    subCommands: { list: listCmd, show: showCmd, add: addCmd },
+  });
+}
+
+const ideasCmd = makeDomainCmd('ideas', 'Manage ideas', IDEAS_DIR);
+const processesCmd = makeDomainCmd('processes', 'Manage process docs', PROCESSES_DIR);
+const progressCmd = makeDomainCmd('progress', 'Manage progress logs', PROGRESS_DIR);
+const referencesCmd = makeDomainCmd('references', 'Manage reference docs', REFERENCES_DIR);
+const archiveCmd = makeDomainCmd('archive', 'Manage archived items', ARCHIVE_DIR);
+
+const roadmapAddCmd = defineCommand({
+  meta: { name: 'add', description: 'Create a new roadmap' },
+  args: {
+    title: { type: 'positional', description: 'Roadmap title', required: true },
+    period: { type: 'string', description: 'Period (e.g. 2026-H2)', required: false },
+    priority: { type: 'string', description: 'Priority 0-100', required: false },
+    tldr: { type: 'string', description: 'Summary', default: 'TODO', required: false },
+  },
+  run({ args }) {
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const slug = slugify(args.title);
+    const filename = `${today}-${slug}.md`;
+    const filepath = join(ROADMAPS_DIR, filename);
+    if (existsSync(filepath)) { console.error(`error: "${filename}" already exists`); return; }
+    const frontmatter: Record<string, unknown> = {
+      title: args.title, slug, status: 'active', period: args.period, tldr: args.tldr,
+      priority: args.priority ? parseInt(args.priority) : undefined, entries: [],
+    };
+    writeFileSync(filepath, `---\n${yaml.dump(frontmatter, { lineWidth: 120 })}---\n`, 'utf-8');
+    console.log(`ok: created roadmap "${slug}"`);
+  },
+});
+
+roadmapCmd.subCommands = { ...roadmapCmd.subCommands, add: roadmapAddCmd };
+
 const mainCmd = defineCommand({
   meta: { name: 'ctx', description: 'personal-context CLI — plan, roadmap, and research management' },
   subCommands: {
@@ -605,6 +690,11 @@ const mainCmd = defineCommand({
     plan: planCmd,
     roadmap: roadmapCmd,
     research: researchCmd,
+    ideas: ideasCmd,
+    processes: processesCmd,
+    progress: progressCmd,
+    references: referencesCmd,
+    archive: archiveCmd,
     graph: graphCmd,
     setup: setupCmd,
     sync: syncCmd,
