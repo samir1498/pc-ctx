@@ -588,8 +588,9 @@ const uiCmd = defineCommand({
       const { tag, url } = await fetchLatestTarball(repo);
       console.log(` Latest: ${tag}`);
       const tmp = join(homedir(), '.pc-ctx', 'web-ui.tar.gz');
+      mkdirSync(dirname(tmp), { recursive: true });
+
       await downloadWithProgress(url, tmp);
-      mkdirSync(UI_CACHE, { recursive: true });
       extractTarball(tmp, UI_CACHE);
       writeVersion(tag);
       try { execSync(`rm "${tmp}"`); } catch { /* ok */ }
