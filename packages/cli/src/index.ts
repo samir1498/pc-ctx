@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from 'fs';
-import { spawnSync } from 'child_process';
+import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, createWriteStream } from 'fs';
+import { spawnSync, execSync } from 'child_process';
 import { join, dirname, relative } from 'path';
+import { homedir } from 'os';
+import { createServer } from 'http';
 import { defineCommand, createMain } from 'citty';
 import yaml from 'js-yaml';
 import {
@@ -475,6 +477,135 @@ const syncCmd = defineCommand({
   },
 });
 
+const UI_CACHE = join(homedir(), '.pc-ctx', 'web-ui');
+const UI_VERSION_FILE = join(UI_CACHE, '.version');
+
+async function fetchLatestTarball(repo: string) {
+  const api = `https://api.github.com/repos/${repo}/releases/latest`;
+  const res = await fetch(api, {
+    headers: { Accept: 'application/vnd.github.v3+json', 'User-Agent': 'pc-ctx' },
+  });
+  if (!res.ok) throw new Error(`GitHub API error: ${res.status}`);
+  const release = await res.json() as { tag_name: string; assets: { name: string; browser_download_url: string }[] };
+  const asset = release.assets.find((a: { name: string }) => a.name === 'web-ui.tar.gz');
+  if (!asset) throw new Error('No web-ui.tar.gz found in latest release');
+  return { tag: release.tag_name, url: asset.browser_download_url };
+}
+
+async function downloadWithProgress(url: string, dest: string) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+  const total = parseInt(res.headers.get('content-length') || '0');
+  const writer = createWriteStream(dest);
+  let received = 0;
+
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error('No response body');
+
+  const pump = async () => {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.length;
+      const pct = total ? Math.round((received / total) * 100) : 0;
+      process.stdout.write(`\r  Downloading... ${pct}% (${(received / 1024 / 1024).toFixed(1)}MB)`);
+      writer.write(value);
+    }
+    writer.end();
+    process.stdout.write('\n');
+  };
+  await pump();
+}
+
+function extractTarball(tarball: string, dest: string) {
+  mkdirSync(dest, { recursive: true });
+  execSync(`tar xzf "${tarball}" -C "${dest}"`, { stdio: 'inherit' });
+}
+
+function getCachedVersion(): string | null {
+  try { return readFileSync(UI_VERSION_FILE, 'utf-8').trim(); } catch { return null; }
+}
+
+function writeVersion(v: string) {
+  mkdirSync(dirname(UI_VERSION_FILE), { recursive: true });
+  writeFileSync(UI_VERSION_FILE, v, 'utf-8');
+}
+
+function serveStatic(port: number, dir: string, pat?: string) {
+  const extMap: Record<string, string> = {
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.png': 'image/png',
+    '.svg': 'image/svg+xml',
+    '.ico': 'image/x-icon',
+    '.json': 'application/json',
+    '.woff2': 'font/woff2',
+  };
+
+  const server = createServer((req, res) => {
+    if (req.url === '/api/env' && pat) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ GITHUB_TOKEN: pat }));
+      return;
+    }
+
+    let filePath = join(dir, req.url === '/' ? 'index.html' : req.url || '');
+    if (!existsSync(filePath) || !filePath.startsWith(dir)) {
+      filePath = join(dir, 'index.html');
+    }
+    const ext = filePath.slice(filePath.lastIndexOf('.'));
+    const contentType = extMap[ext] || 'application/octet-stream';
+    const content = readFileSync(filePath);
+    res.writeHead(200, { 'Content-Type': contentType });
+    res.end(content);
+  });
+
+  server.listen(port, () => {
+    console.log(` Web UI running at http://localhost:${port}`);
+    console.log(` Press Ctrl+C to stop`);
+  });
+}
+
+const uiCmd = defineCommand({
+  meta: { name: 'ui', description: 'Download, cache, and serve the web UI locally' },
+  args: {
+    serve: { type: 'boolean', description: 'Serve cached UI (downloads first if missing)', default: false, required: false },
+    update: { type: 'boolean', description: 'Force re-download', default: false, required: false },
+    port: { type: 'string', description: 'Local server port', default: '3333', required: false },
+    repo: { type: 'string', description: 'GitHub repo (owner/name)', default: 'samir1498/pc-ctx-web', required: false },
+  },
+  async run({ args }) {
+    const configPath = join(homedir(), '.pc-ctx', 'config.json');
+    let config: { pat?: string; repo?: string } = {};
+    try { config = JSON.parse(readFileSync(configPath, 'utf-8')); } catch { /* ok */ }
+
+    const repo = args.repo || config.repo || 'samir1498/pc-ctx-web';
+    const pat = config.pat;
+
+    if (args.update || !getCachedVersion()) {
+      console.log(` Fetching latest release from ${repo}...`);
+      const { tag, url } = await fetchLatestTarball(repo);
+      console.log(` Latest: ${tag}`);
+      const tmp = join(homedir(), '.pc-ctx', 'web-ui.tar.gz');
+      await downloadWithProgress(url, tmp);
+      mkdirSync(UI_CACHE, { recursive: true });
+      extractTarball(tmp, UI_CACHE);
+      writeVersion(tag);
+      try { execSync(`rm "${tmp}"`); } catch { /* ok */ }
+      console.log(` Extracted to ${UI_CACHE}`);
+    } else {
+      const cached = getCachedVersion();
+      console.log(` Using cached version: ${cached}`);
+    }
+
+    if (args.serve) {
+      serveStatic(parseInt(args.port), UI_CACHE, pat);
+      await new Promise(() => {}); // keep alive
+    }
+  },
+});
+
 const mainCmd = defineCommand({
   meta: { name: 'ctx', description: 'personal-context CLI — plan, roadmap, and research management' },
   subCommands: {
@@ -488,6 +619,7 @@ const mainCmd = defineCommand({
     graph: graphCmd,
     setup: setupCmd,
     sync: syncCmd,
+    ui: uiCmd,
   },
 });
 
