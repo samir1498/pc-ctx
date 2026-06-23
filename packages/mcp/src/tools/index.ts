@@ -15,6 +15,8 @@ import { registerResearchShowTool } from './research-show.js';
 import { registerGraphTool } from './graph.js';
 import { registerSyncTool } from './sync.js';
 import { registerSetupTool } from './setup.js';
+import { registerDomainTools } from './domain-tools.js';
+import { join } from 'path';
 
 export function registerAllTools(server: McpServer, ctx: { plansDir: string; roadmapsDir: string; researchDir: string; root: string }) {
   registerListTool(server, ctx);
@@ -33,4 +35,15 @@ export function registerAllTools(server: McpServer, ctx: { plansDir: string; roa
   registerGraphTool(server, ctx);
   registerSyncTool(server, ctx);
   registerSetupTool(server, ctx);
+
+  const domains: [string, string, string][] = [
+    ['ideas', join(ctx.root, 'ideas'), 'idea'],
+    ['processes', join(ctx.root, 'processes'), 'process'],
+    ['progress', join(ctx.root, 'progress'), 'progress entry'],
+    ['references', join(ctx.root, 'references'), 'reference'],
+    ['archive', join(ctx.root, 'archive'), 'archived item'],
+  ];
+  for (const [domain, dir, label] of domains) {
+    registerDomainTools(server, { root: ctx.root }, domain, dir, label);
+  }
 }
