@@ -10,7 +10,7 @@ export function toError(message: string, recovery?: string): { content: { type: 
 }
 
 export function notFound(kind: string, slug: string) {
-  return toError(`Plan ${kind} "${slug}" not found.`);
+  return toError(`${kind} "${slug}" not found.`);
 }
 
 export function truncateList<T>(items: T[], max = 20): { items: T[]; total: number; note?: string } {

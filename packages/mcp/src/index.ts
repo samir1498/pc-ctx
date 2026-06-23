@@ -3,6 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { buildServer } from './server.js';
 
 export interface McpServerOptions {
+  root: string;
   plansDir: string;
   roadmapsDir?: string;
   researchDir?: string;
@@ -13,6 +14,7 @@ export async function createMcpServer(options: McpServerOptions): Promise<McpSer
     options.plansDir,
     options.roadmapsDir ?? options.plansDir.replace('/plans', '/roadmaps'),
     options.researchDir ?? options.plansDir.replace('/plans', '/../personal-research'),
+    options.root,
   );
 
   const transport = new StdioServerTransport();
