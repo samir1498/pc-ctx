@@ -1,20 +1,20 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { existsSync, mkdirSync, writeFileSync, rmSync } from 'fs';
-import { join } from 'path';
-import { mkdtempSync } from 'fs';
-import { tmpdir } from 'os';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
-  parsePlanFile,
-  serializePlanFile,
-  slugify,
-  fmtTasks,
-  fmtPrio,
-  statusBadge,
   VALID_STATUSES,
   VALID_TASK_STATUSES,
-  readAllPlans,
-  listResearchFiles,
   findResearchFile,
+  fmtPrio,
+  fmtTasks,
+  listResearchFiles,
+  parsePlanFile,
+  readAllPlans,
+  serializePlanFile,
+  slugify,
+  statusBadge,
 } from './index';
 
 const VALID_PLAN = `---
@@ -104,7 +104,7 @@ describe('readAllPlans', () => {
     writePlan('plan-b.md', VALID_PLAN.replace('slug: test-plan', 'slug: plan-b'));
     const plans = readAllPlans(tmpPlanDir);
     expect(plans.length).toBeGreaterThanOrEqual(2);
-    const slugs = plans.map(p => p.slug);
+    const slugs = plans.map((p) => p.slug);
     expect(slugs).toContain('test-plan');
     expect(slugs).toContain('plan-b');
   });
@@ -121,7 +121,12 @@ describe('slugify', () => {
 
 describe('fmtTasks', () => {
   it('formats task counts', () => {
-    expect(fmtTasks([{ id: 'T1', status: 'done' }, { id: 'T2', status: 'pending' }])).toBe('1/2');
+    expect(
+      fmtTasks([
+        { id: 'T1', status: 'done' },
+        { id: 'T2', status: 'pending' },
+      ]),
+    ).toBe('1/2');
     expect(fmtTasks([])).toBe('—');
     expect(fmtTasks()).toBe('—');
   });
@@ -182,7 +187,9 @@ describe('listResearchFiles', () => {
   });
 
   it('recurses all depths and uses path-based slugs', () => {
-    const slugs = listResearchFiles(researchDir).map((f) => f.slug).sort();
+    const slugs = listResearchFiles(researchDir)
+      .map((f) => f.slug)
+      .sort();
     expect(slugs).toEqual(['engineering/dup', 'engineering/foo', 'engineering/sub/deep', 'marketing/dup', 'root']);
   });
 

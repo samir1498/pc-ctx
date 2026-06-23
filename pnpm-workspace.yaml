@@ -1,6 +1,7 @@
 packages:
   - 'packages/*'
 allowBuilds:
+  '@biomejs/biome': true
   core-js: false
 minimumReleaseAgeExclude:
   - '@hono/node-server@2.0.6'

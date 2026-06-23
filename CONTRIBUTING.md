@@ -14,8 +14,11 @@ pnpm build
 Run full quality gate before submitting:
 
 ```bash
-pnpm check   # lint → knip → typecheck → depcruise → test → build
+pnpm check   # lint -> knip -> build -> typecheck -> depcruise -> test
 ```
+
+`build` runs before `typecheck` because the cli and mcp packages typecheck against
+`@pc-ctx/core`'s compiled declaration files.
 
 ## PR workflow
 
@@ -27,9 +30,9 @@ pnpm check   # lint → knip → typecheck → depcruise → test → build
 ## Code style
 
 - TypeScript strict mode
-- Biome for formatting (no semicolons, double quotes)
+- Biome for lint + formatting (semicolons, single quotes); run `pnpm lint:fix` and `pnpm format`
 - No barrel exports (`index.ts` re-exports are ok at package root)
-- Tests use Vitest (run with `pnpm -r test`)
+- Tests use Vitest: `pnpm test` (unit + integration), or `pnpm test:unit` / `pnpm test:it`
 
 ## Project structure
 

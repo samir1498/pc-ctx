@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from 'fs';
-import { join, dirname, basename, relative } from 'path';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, relative } from 'node:path';
 import yaml from 'js-yaml';
 
 export interface Task {
@@ -57,6 +57,8 @@ export interface ResolvedRef {
 
 export const VALID_STATUSES = ['active', 'paused', 'done', 'cancelled'];
 export const VALID_TASK_STATUSES = ['pending', 'in-progress', 'done', 'blocked', 'cancelled'];
+/** Frontmatter fields required on every standardized document, across all domains. */
+export const REQUIRED_DOC_FIELDS = ['title', 'slug', 'status', 'category', 'created', 'tldr'];
 
 export function parsePlanFile(filepath: string): PlanFile | null {
   let raw: string;
@@ -95,6 +97,75 @@ export function serializePlanFile(plan: PlanFile): string {
   return `---\n${yamlStr}---\n${plan.body}\n`;
 }
 
+/**
+ * Write a plan file atomically: serialize, write to a temp sibling, then rename
+ * into place. The rename is atomic on the same filesystem, so a crash mid-write
+ * can never leave a half-written plan file.
+ */
+export function writePlanFileAtomic(plan: PlanFile): void {
+  const finalPath = join(plan.dir, plan.filename);
+  const tmpPath = `${finalPath}.tmp`;
+  writeFileSync(tmpPath, serializePlanFile(plan), 'utf-8');
+  renameSync(tmpPath, finalPath);
+}
+
+export interface ValidateResult {
+  checked: number;
+  errors: string[];
+  warnings: string[];
+  valid: boolean;
+}
+
+/**
+ * The document domains that live under a context root, as [name, relative-dir] pairs.
+ * `research` is excluded: it lives in a separate repo and has no required-field schema.
+ */
+export function domainDirs(root: string): [string, string][] {
+  return [
+    ['plans', join(root, 'plans')],
+    ['roadmaps', join(root, 'roadmaps')],
+    ['ideas', join(root, 'ideas')],
+    ['processes', join(root, 'processes')],
+    ['progress', join(root, 'progress')],
+    ['references', join(root, 'references')],
+    ['archive', join(root, 'archive')],
+    ['handoffs', join(root, 'handoffs')],
+  ];
+}
+
+/**
+ * Validate frontmatter across one or more domains. Every domain enforces the same
+ * standardized schema (REQUIRED_DOC_FIELDS, a valid status, and well-formed task
+ * statuses). Single source of truth shared by the CLI `validate` command and the MCP
+ * `plan_validate` tool. Files without YAML frontmatter are skipped (not counted).
+ */
+export function validateDomains(domains: [string, string][]): ValidateResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  let checked = 0;
+
+  for (const [domain, dir] of domains) {
+    const docs = readAllPlans(dir);
+    checked += docs.length;
+    for (const p of docs) {
+      const f = p.frontmatter;
+      const id = f.slug ?? p.slug;
+      for (const field of REQUIRED_DOC_FIELDS) {
+        if (f[field] == null || f[field] === '') errors.push(`${domain}/${id}: missing required field "${field}"`);
+      }
+      if (f.status && !VALID_STATUSES.includes(f.status)) errors.push(`${domain}/${id}: invalid status "${f.status}"`);
+      if (f.tasks)
+        for (const t of f.tasks)
+          if (!VALID_TASK_STATUSES.includes(t.status))
+            errors.push(`${domain}/${id}.tasks.${t.id}: invalid status "${t.status}"`);
+      if (f.created && typeof f.created !== 'number')
+        warnings.push(`${domain}/${id}: "created" should be a number, got "${f.created}"`);
+    }
+  }
+
+  return { checked, errors, warnings, valid: errors.length === 0 };
+}
+
 export function readAllPlans(dir: string, excludeArchived = true): PlanFile[] {
   if (!existsSync(dir)) return [];
   const entries = readdirSync(dir, { withFileTypes: true });
@@ -112,7 +183,7 @@ export function readAllPlans(dir: string, excludeArchived = true): PlanFile[] {
 }
 
 export function findPlan(plansDir: string, roadmapsDir: string, slug: string): PlanFile | null {
-  return [...readAllPlans(plansDir), ...readAllPlans(roadmapsDir)].find(p => p.slug === slug) || null;
+  return [...readAllPlans(plansDir), ...readAllPlans(roadmapsDir)].find((p) => p.slug === slug) || null;
 }
 
 export function listResearchFiles(researchDir: string): { slug: string; filepath: string; title: string }[] {
@@ -137,10 +208,13 @@ export function listResearchFiles(researchDir: string): { slug: string; filepath
   return files;
 }
 
-export function findResearchFile(researchDir: string, slugOrPath: string): { slug: string; filepath: string; content: string } | null {
+export function findResearchFile(
+  researchDir: string,
+  slugOrPath: string,
+): { slug: string; filepath: string; content: string } | null {
   const files = listResearchFiles(researchDir);
   // Prefer an exact full-slug (path) match; it is always unambiguous.
-  let match = files.find(f => f.slug === slugOrPath);
+  let match = files.find((f) => f.slug === slugOrPath);
   if (!match) {
     // Fall back to a bare basename or path-suffix match, but only when it resolves to one file.
     const candidates = files.filter((f) => basename(f.slug) === slugOrPath || f.filepath.endsWith(slugOrPath));
@@ -150,12 +224,7 @@ export function findResearchFile(researchDir: string, slugOrPath: string): { slu
   return { ...match, content: readFileSync(match.filepath, 'utf-8') };
 }
 
-export function resolveRef(
-  raw: string,
-  plansDir: string,
-  roadmapsDir: string,
-  researchDir: string,
-): ResolvedRef {
+export function resolveRef(raw: string, plansDir: string, roadmapsDir: string, researchDir: string): ResolvedRef {
   const colonIdx = raw.indexOf(':');
   if (colonIdx === -1) return { type: 'unknown', target: raw, label: raw };
 
@@ -166,7 +235,12 @@ export function resolveRef(
     case 'research': {
       const file = findResearchFile(researchDir, target);
       return file
-        ? { type: 'research', target, label: target, description: `research file: ${relative(researchDir, file.filepath)}` }
+        ? {
+            type: 'research',
+            target,
+            label: target,
+            description: `research file: ${relative(researchDir, file.filepath)}`,
+          }
         : { type: 'research', target, label: target, description: '(not found locally)' };
     }
     case 'plan': {
@@ -186,13 +260,14 @@ export function collectRefs(plan: PlanFile): string[] {
   const f = plan.frontmatter;
   const refs: string[] = [...(f.references || [])];
   if (f.tasks) for (const t of f.tasks) if (t.refs) refs.push(...t.refs);
-  if (f.entries) for (const e of f.entries) if (e.ref.startsWith('research:') || e.ref.startsWith('url:')) refs.push(e.ref);
+  if (f.entries)
+    for (const e of f.entries) if (e.ref.startsWith('research:') || e.ref.startsWith('url:')) refs.push(e.ref);
   return [...new Set(refs)];
 }
 
 export function fmtTasks(tasks?: Task[]): string {
   if (!tasks?.length) return '—';
-  return `${tasks.filter(t => t.status === 'done').length}/${tasks.length}`;
+  return `${tasks.filter((t) => t.status === 'done').length}/${tasks.length}`;
 }
 
 export function fmtPrio(p?: number): string {
@@ -201,7 +276,7 @@ export function fmtPrio(p?: number): string {
 
 export function fmtCell(text: string, width: number): string {
   if (!text) return ''.padEnd(width);
-  return text.length <= width ? text.padEnd(width) : text.slice(0, width - 3) + '…';
+  return text.length <= width ? text.padEnd(width) : `${text.slice(0, width - 3)}…`;
 }
 
 export function statusBadge(s: string): string {
@@ -210,7 +285,11 @@ export function statusBadge(s: string): string {
 }
 
 export function slugify(title: string): string {
-  return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
 }
 
 export const SCAFFOLD_FILES: Record<string, string> = {
@@ -265,7 +344,7 @@ title: Example Plan
 slug: example-plan
 status: active
 category: learning
-created: YYYYMMDD
+created: 20260101
 tldr: Template plan demonstrating YAML frontmatter conventions.
 priority: 30
 tasks:
@@ -293,8 +372,10 @@ N/A — this is a template.
 title: Example Roadmap
 slug: example-roadmap
 status: active
+category: planning
+created: 20260101
 period: YYYY-QX
-tldr: Example roadmap showing the format — reference to plans with status pointers.
+tldr: Example roadmap showing the format. References plans with status pointers.
 priority: 50
 entries:
   - ref: example-plan
@@ -303,5 +384,34 @@ entries:
 # Example Roadmap
 
 High-level initiative map. Each entry points to a plan file in \`plans/\`.
+`,
+  'handoffs/example.md': `---
+title: Example session handoff
+slug: example-handoff
+status: active
+category: general
+created: 20260101
+tldr: One-line summary of what this session did and where it left off.
+session: 20260101
+branch: main
+tasks:
+  - id: H1
+    desc: First thing the next session should do
+    status: pending
+references: []
+---
+# Example session handoff
+
+## Done
+- What this session completed.
+
+## Current state
+- Where things stand right now (branches, deploys, open PRs).
+
+## Next steps
+- Tracked in \`tasks\` above; expand here if needed.
+
+## Blockers / open questions
+- Anything the next session needs answered.
 `,
 };

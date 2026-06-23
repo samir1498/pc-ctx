@@ -14,18 +14,15 @@
       "import": "./dist/index.js"
     }
   },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
+  "files": ["dist", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "echo ok",
     "clean": "rm -rf dist",
-    "test": "echo ok",
-    "test:unit": "vitest run --config ../../config/vitest.unit.config.ts"
+    "test": "vitest run --config ../../config/vitest.it.config.ts",
+    "test:unit": "vitest run --config ../../config/vitest.unit.config.ts",
+    "test:it": "vitest run --config ../../config/vitest.it.config.ts"
   },
   "repository": {
     "type": "git",
@@ -43,11 +40,9 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.0",
     "@pc-ctx/core": "workspace:^",
-    "js-yaml": "^4.2.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
-    "@types/js-yaml": "^4.0.9",
     "typescript": "^5.7.0"
   }
 }

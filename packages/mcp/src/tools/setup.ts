@@ -1,9 +1,9 @@
-import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { mkdirSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SCAFFOLD_FILES } from '@pc-ctx/core';
-import { toJson, toError } from '../format.js';
+import { z } from 'zod';
+import { toError, toJson } from '../format.js';
 
 export function registerSetupTool(server: McpServer, ctx: { root: string }) {
   server.tool(
@@ -29,12 +29,20 @@ export function registerSetupTool(server: McpServer, ctx: { root: string }) {
           writeFileSync(join(target, filepath), content, 'utf-8');
         }
 
-        const pkg = { name: 'personal-context', private: true, type: 'module', scripts: { ctx: 'bun run bin/ctx.ts' }, dependencies: { '@pc-ctx/cli': '^0.1.0' } };
-        writeFileSync(join(target, 'package.json'), JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
+        const pkg = {
+          name: 'personal-context',
+          private: true,
+          type: 'module',
+          scripts: { ctx: 'bun run bin/ctx.ts' },
+          dependencies: { '@pc-ctx/cli': '^0.1.0' },
+        };
+        writeFileSync(join(target, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`, 'utf-8');
         const proxyBin = `#!/usr/bin/env node\nimport('@pc-ctx/cli').catch(() => {\n  console.error('Install @pc-ctx/cli first: pnpm add @pc-ctx/cli');\n  process.exit(1);\n});\n`;
         writeFileSync(join(target, 'bin', 'ctx.ts'), proxyBin, 'utf-8');
 
-        return { content: [{ type: 'text' as const, text: toJson({ ok: true, path: target } as { ok: true; path: string }) }] };
+        return {
+          content: [{ type: 'text' as const, text: toJson({ ok: true, path: target } as { ok: true; path: string }) }],
+        };
       } catch (e) {
         return toError(String(e));
       }

@@ -4,10 +4,5 @@ export default {
   ignore: ['packages/*/src/**/*.spec.ts'],
   ignoreExportsUsedInFile: true,
   ignoreBinaries: ['fallow', 'dot'],
-  ignoreDependencies: [
-    '@types/node',
-    '@vitest/coverage-v8',
-    'typescript',
-    '@pc-ctx/core',
-  ],
+  ignoreDependencies: ['@types/node', '@vitest/coverage-v8', 'typescript', '@pc-ctx/core'],
 };

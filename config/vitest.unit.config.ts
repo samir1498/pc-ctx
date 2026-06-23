@@ -1,4 +1,4 @@
-import { fileURLToPath } from 'url';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -20,11 +20,7 @@ export default defineConfig({
         statements: 80,
       },
       include: ['packages/*/src/**/*.ts'],
-      exclude: [
-        '**/node_modules/**',
-        '**/dist/**',
-        'packages/mcp/**',
-      ],
+      exclude: ['**/node_modules/**', '**/dist/**', 'packages/mcp/**'],
     },
   },
 });

@@ -1,9 +1,9 @@
-import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { readAllPlans, serializePlanFile, slugify } from '@pc-ctx/core';
-import { writeFileSync, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { toJson, toError } from '../format.js';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { slugify, writePlanFileAtomic } from '@pc-ctx/core';
+import { z } from 'zod';
+import { toError, toJson } from '../format.js';
 
 export function registerAddTool(server: McpServer, ctx: { plansDir: string }) {
   server.tool(
@@ -34,7 +34,7 @@ export function registerAddTool(server: McpServer, ctx: { plansDir: string }) {
             slug,
             status: status ?? 'active',
             category,
-            created: parseInt(today),
+            created: Number.parseInt(today),
             tldr: tldr ?? 'TODO: add summary',
             priority,
             tasks: [],
@@ -45,8 +45,15 @@ export function registerAddTool(server: McpServer, ctx: { plansDir: string }) {
           raw: '',
         };
 
-        writeFileSync(filepath, serializePlanFile(plan), 'utf-8');
-        return { content: [{ type: 'text' as const, text: toJson({ slug, filename, ok: true } as { slug: string; filename: string; ok: true }) }] };
+        writePlanFileAtomic(plan);
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: toJson({ slug, filename, ok: true } as { slug: string; filename: string; ok: true }),
+            },
+          ],
+        };
       } catch (e) {
         return toError(String(e));
       }

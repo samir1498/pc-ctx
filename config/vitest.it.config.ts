@@ -16,10 +16,7 @@ export default defineConfig({
         statements: 60,
       },
       include: ['packages/*/src/**/*.ts'],
-      exclude: [
-        '**/node_modules/**',
-        '**/dist/**',
-      ],
+      exclude: ['**/node_modules/**', '**/dist/**'],
     },
   },
 });

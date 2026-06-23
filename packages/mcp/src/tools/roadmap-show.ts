@@ -1,7 +1,7 @@
-import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { findPlan } from '@pc-ctx/core';
-import { toJson, toError, notFound } from '../format.js';
+import { z } from 'zod';
+import { notFound, toError, toJson } from '../format.js';
 
 export function registerRoadmapShowTool(server: McpServer, ctx: { plansDir: string; roadmapsDir: string }) {
   server.tool(
@@ -23,7 +23,7 @@ export function registerRoadmapShowTool(server: McpServer, ctx: { plansDir: stri
           period: f.period ?? null,
           priority: f.priority ?? null,
           tldr: f.tldr,
-          entries: f.entries?.map(e => ({ ref: e.ref, status: e.status ?? null, note: e.note ?? null })) ?? [],
+          entries: f.entries?.map((e) => ({ ref: e.ref, status: e.status ?? null, note: e.note ?? null })) ?? [],
         };
         return { content: [{ type: 'text' as const, text: toJson(result) }] };
       } catch (e) {

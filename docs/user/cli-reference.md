@@ -94,6 +94,19 @@ ctx archive list
 ctx archive show <slug>
 ```
 
+### `ctx handoffs`
+
+Session-to-session handoffs. See [handoff format](handoff-format.md).
+
+```bash
+ctx handoffs list
+ctx handoffs show <slug>
+ctx handoffs add "Title" --category <area> --tldr "Summary"
+```
+
+All domain `add` commands (`ideas`, `processes`, `progress`, `references`, `archive`, `handoffs`)
+accept `--category` and `--tldr` and write the standardized frontmatter.
+
 ### `ctx graph`
 
 ```bash
@@ -117,10 +130,13 @@ ctx config --repo owner/repo
 
 ```bash
 ctx ui                          # download + cache
-ctx ui --serve                  # download + serve
+ctx ui --serve                  # download + serve on 127.0.0.1:3333
 ctx ui --serve --port 8080
 ctx ui --update                 # force re-download
 ```
+
+The local server binds to `127.0.0.1` and injects your GitHub PAT to proxy private repo
+content. Do not expose it publicly without an auth layer in front.
 
 ### `ctx setup`
 

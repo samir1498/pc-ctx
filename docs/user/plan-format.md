@@ -57,4 +57,12 @@ references:                   # optional
 
 ## Other domains
 
-Ideas, processes, progress, references, and archive files follow a similar markdown + YAML frontmatter pattern but enforce fewer required fields. The `validate` command checks each domain with appropriate rules.
+All domains (plans, roadmaps, ideas, processes, progress, references, archive, handoffs) share
+**one standardized frontmatter schema**. Every document requires the same fields: `title`, `slug`,
+`status`, `category`, `created`, and `tldr`. Domains add their own optional fields on top (plans
+add `tasks`/`acceptance`/`priority`, roadmaps add `period`/`entries`, handoffs add `session`/`branch`;
+see [handoff format](handoff-format.md)).
+
+`ctx validate` enforces this one schema across every domain (and the MCP `plan_validate` tool runs
+the same check). A document with no YAML frontmatter is skipped, not flagged. Files created by
+`ctx <domain> add` always include the required fields, so freshly scaffolded content validates clean.

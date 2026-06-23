@@ -1,10 +1,11 @@
-import { z } from 'zod';
-
 export function toJson(data: unknown): string {
   return JSON.stringify(data, null, 2);
 }
 
-export function toError(message: string, recovery?: string): { content: { type: 'text'; text: string }[]; isError: true } {
+export function toError(
+  message: string,
+  recovery?: string,
+): { content: { type: 'text'; text: string }[]; isError: true } {
   const text = recovery ? `${message}\n\n${recovery}` : message;
   return { content: [{ type: 'text', text }], isError: true };
 }
