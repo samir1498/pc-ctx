@@ -1,23 +1,20 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
-import { tmpdir } from 'os';
-import { execSync } from 'child_process';
+import { execSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 let tmpDir: string;
 let ctxCli: string;
 
 function ctx(...args: string[]): { stdout: string; stderr: string; exitCode: number } {
   try {
-    const stdout = execSync(
-      `node ${ctxCli} ${args.join(' ')}`,
-      {
-        cwd: tmpDir,
-        encoding: 'utf-8',
-        env: { ...process.env, PC_CTX_ROOT: tmpDir, PC_CTX_RESEARCH_DIR: join(tmpDir, 'research') },
-      },
-    );
+    const stdout = execSync(`node ${ctxCli} ${args.join(' ')}`, {
+      cwd: tmpDir,
+      encoding: 'utf-8',
+      env: { ...process.env, PC_CTX_ROOT: tmpDir, PC_CTX_RESEARCH_DIR: join(tmpDir, 'research') },
+    });
     return { stdout, stderr: '', exitCode: 0 };
   } catch (e: any) {
     return {

@@ -1,7 +1,7 @@
-import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { findPlan, fmtTasks } from '@pc-ctx/core';
-import { toJson, toError, notFound } from '../format.js';
+import { z } from 'zod';
+import { notFound, toError, toJson } from '../format.js';
 
 export function registerShowTool(server: McpServer, ctx: { plansDir: string; roadmapsDir: string }) {
   server.tool(
@@ -23,7 +23,7 @@ export function registerShowTool(server: McpServer, ctx: { plansDir: string; roa
           category: f.category,
           priority: f.priority ?? null,
           tldr: f.tldr,
-          tasks: f.tasks?.map(t => ({ id: t.id, title: t.title, desc: t.desc, status: t.status })) ?? [],
+          tasks: f.tasks?.map((t) => ({ id: t.id, title: t.title, desc: t.desc, status: t.status })) ?? [],
           taskSummary: fmtTasks(f.tasks),
           acceptance: f.acceptance ?? [],
           references: f.references ?? [],

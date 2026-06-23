@@ -1,7 +1,7 @@
-import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { spawnSync } from 'node:child_process';
-import { toJson, toError } from '../format.js';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
+import { toError, toJson } from '../format.js';
 
 export function registerSyncTool(server: McpServer, ctx: { root: string }) {
   server.tool(

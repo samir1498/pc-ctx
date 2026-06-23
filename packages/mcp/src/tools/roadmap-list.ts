@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { readAllPlans, fmtTasks } from '@pc-ctx/core';
-import { toJson, toError, truncateList } from '../format.js';
+import { fmtTasks, readAllPlans } from '@pc-ctx/core';
+import { toError, toJson, truncateList } from '../format.js';
 
 export function registerRoadmapListTool(server: McpServer, ctx: { roadmapsDir: string }) {
   server.tool(
@@ -10,7 +10,7 @@ export function registerRoadmapListTool(server: McpServer, ctx: { roadmapsDir: s
     async () => {
       try {
         const roadmaps = readAllPlans(ctx.roadmapsDir);
-        const rows = roadmaps.map(r => ({
+        const rows = roadmaps.map((r) => ({
           slug: r.slug,
           title: r.frontmatter.title,
           status: r.frontmatter.status,

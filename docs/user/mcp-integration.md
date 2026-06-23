@@ -34,7 +34,7 @@ The MCP server exposes tools for AI agents. Add to your `opencode.json`:
 | `plan_list` | List plans (optional `status` filter) |
 | `plan_show` | Show plan details |
 | `plan_status` | Overview of all plans grouped by status |
-| `plan_validate` | Validate all files across domains |
+| `plan_validate` | Validate frontmatter across all domains against the standardized schema |
 | `plan_set_status` | Update plan status |
 | `plan_task_status` | Update task status |
 | `plan_add` | Create a new plan |
@@ -57,12 +57,17 @@ The MCP server exposes tools for AI agents. Add to your `opencode.json`:
 | `research_list` | List all research files |
 | `research_show` | Show research file content |
 
-### Domain tools (ideas, processes, progress, references, archive)
+### Domain tools (ideas, processes, progress, references, archive, handoffs)
+
+Each domain exposes the same three tools:
 
 | Tool | Description |
 |------|-------------|
 | `<domain>_list` | List files in domain |
-| `<domain>_show` | Show file content |
+| `<domain>_show` | Show file content by slug |
+| `<domain>_add` | Create a new file (writes the standardized frontmatter) |
+
+See [handoff format](handoff-format.md) for the session-handoff domain.
 
 ### System tools
 

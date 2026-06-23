@@ -1,7 +1,7 @@
-import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { readAllPlans, fmtTasks } from '@pc-ctx/core';
-import { toJson, toError, truncateList } from '../format.js';
+import { fmtTasks, readAllPlans } from '@pc-ctx/core';
+import { z } from 'zod';
+import { toError, toJson, truncateList } from '../format.js';
 
 export function registerListTool(server: McpServer, ctx: { plansDir: string }) {
   server.tool(
@@ -14,10 +14,10 @@ export function registerListTool(server: McpServer, ctx: { plansDir: string }) {
     async ({ status, category }) => {
       try {
         let plans = readAllPlans(ctx.plansDir);
-        if (status) plans = plans.filter(p => p.frontmatter.status === status);
-        if (category) plans = plans.filter(p => p.frontmatter.category === category);
+        if (status) plans = plans.filter((p) => p.frontmatter.status === status);
+        if (category) plans = plans.filter((p) => p.frontmatter.category === category);
 
-        const rows = plans.map(p => ({
+        const rows = plans.map((p) => ({
           slug: p.slug,
           title: p.frontmatter.title,
           status: p.frontmatter.status,

@@ -14,7 +14,8 @@ ctx setup ./my-project && ctx status
 | [Getting started](docs/user/getting-started.md) | Setup, install, first tour |
 | [CLI reference](docs/user/cli-reference.md) | All `ctx` commands |
 | [MCP integration](docs/user/mcp-integration.md) | AI agent tool configuration |
-| [Plan format](docs/user/plan-format.md) | Frontmatter schema |
+| [Plan format](docs/user/plan-format.md) | Standardized frontmatter schema |
+| [Handoff format](docs/user/handoff-format.md) | Session-to-session handoff standard |
 | [Architecture](docs/dev/architecture.md) | Monorepo design decisions |
 
 ## Contributing

@@ -1,9 +1,7 @@
-import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { readAllPlans, serializePlanFile, VALID_STATUSES } from '@pc-ctx/core';
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { toJson, toError, notFound } from '../format.js';
+import { readAllPlans, writePlanFileAtomic } from '@pc-ctx/core';
+import { z } from 'zod';
+import { notFound, toError, toJson } from '../format.js';
 
 export function registerSetStatusTool(server: McpServer, ctx: { plansDir: string }) {
   server.tool(
@@ -15,11 +13,18 @@ export function registerSetStatusTool(server: McpServer, ctx: { plansDir: string
     },
     async ({ slug, status }) => {
       try {
-        const plan = readAllPlans(ctx.plansDir).find(p => p.slug === slug);
+        const plan = readAllPlans(ctx.plansDir).find((p) => p.slug === slug);
         if (!plan) return notFound('plan', slug);
         plan.frontmatter.status = status;
-        writeFileSync(join(plan.dir, plan.filename), serializePlanFile(plan), 'utf-8');
-        return { content: [{ type: 'text' as const, text: toJson({ slug, status, ok: true } as { slug: string; status: string; ok: true }) }] };
+        writePlanFileAtomic(plan);
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: toJson({ slug, status, ok: true } as { slug: string; status: string; ok: true }),
+            },
+          ],
+        };
       } catch (e) {
         return toError(String(e));
       }

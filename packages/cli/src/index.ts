@@ -1,28 +1,29 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, createWriteStream } from 'fs';
-import { spawnSync, execSync } from 'child_process';
-import { join, dirname, relative } from 'path';
-import { homedir } from 'os';
-import { defineCommand, createMain } from 'citty';
-import yaml from 'js-yaml';
+import { execSync, spawnSync } from 'node:child_process';
+import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join, relative } from 'node:path';
 import {
-  readAllPlans,
-  findPlan,
-  parsePlanFile,
-  serializePlanFile,
-  listResearchFiles,
-  findResearchFile,
-  resolveRef,
-  collectRefs,
-  fmtTasks,
-  fmtPrio,
-  fmtCell,
-  statusBadge,
-  slugify,
+  type PlanMeta,
+  SCAFFOLD_FILES,
   VALID_STATUSES,
   VALID_TASK_STATUSES,
-  SCAFFOLD_FILES,
+  collectRefs,
+  findPlan,
+  findResearchFile,
+  fmtCell,
+  fmtPrio,
+  fmtTasks,
+  listResearchFiles,
+  parsePlanFile,
+  readAllPlans,
+  resolveRef,
+  slugify,
+  statusBadge,
+  validateDomains,
+  writePlanFileAtomic,
 } from '@pc-ctx/core';
+import { createMain, defineCommand } from 'citty';
 
 const ROOT = process.env.PC_CTX_ROOT || process.cwd();
 const PLANS_DIR = join(ROOT, 'plans');
@@ -33,6 +34,7 @@ const PROCESSES_DIR = join(ROOT, 'processes');
 const PROGRESS_DIR = join(ROOT, 'progress');
 const REFERENCES_DIR = join(ROOT, 'references');
 const ARCHIVE_DIR = join(ROOT, 'archive');
+const HANDOFFS_DIR = join(ROOT, 'handoffs');
 
 const ALL_DOMAINS: [string, string][] = [
   ['plans', PLANS_DIR],
@@ -42,6 +44,7 @@ const ALL_DOMAINS: [string, string][] = [
   ['progress', PROGRESS_DIR],
   ['references', REFERENCES_DIR],
   ['archive', ARCHIVE_DIR],
+  ['handoffs', HANDOFFS_DIR],
 ];
 
 const listCmd = defineCommand({
@@ -53,7 +56,7 @@ const listCmd = defineCommand({
   },
   run({ args }) {
     const plans = readAllPlans(PLANS_DIR);
-    const filtered = plans.filter(p => {
+    const filtered = plans.filter((p) => {
       if (args.status && p.frontmatter.status !== args.status) return false;
       if (args.category && p.frontmatter.category !== args.category) return false;
       return true;
@@ -62,10 +65,15 @@ const listCmd = defineCommand({
     if (args.sort === 'priority') sorted.sort((a, b) => (b.frontmatter.priority || 0) - (a.frontmatter.priority || 0));
     else sorted.sort((a, b) => String(a.frontmatter.created).localeCompare(String(b.frontmatter.created)));
 
-    const rows = ['| Slug | Status | Category | Prio | Tasks | Tldr |', '|------|--------|----------|------|-------|------|'];
+    const rows = [
+      '| Slug | Status | Category | Prio | Tasks | Tldr |',
+      '|------|--------|----------|------|-------|------|',
+    ];
     for (const p of sorted) {
       const f = p.frontmatter;
-      rows.push(`| ${fmtCell(f.slug, 30)} | ${fmtCell(f.status, 8)} | ${fmtCell(f.category, 8)} | ${fmtPrio(f.priority).padStart(4)} | ${fmtTasks(f.tasks).padStart(5)} | ${fmtCell(f.tldr, 40)} |`);
+      rows.push(
+        `| ${fmtCell(f.slug, 30)} | ${fmtCell(f.status, 8)} | ${fmtCell(f.category, 8)} | ${fmtPrio(f.priority).padStart(4)} | ${fmtTasks(f.tasks).padStart(5)} | ${fmtCell(f.tldr, 40)} |`,
+      );
     }
     console.log(rows.join('\n'));
   },
@@ -76,28 +84,39 @@ const showCmd = defineCommand({
   args: { slug: { type: 'positional', description: 'Plan slug', required: true } },
   run({ args }) {
     const plan = findPlan(PLANS_DIR, ROADMAPS_DIR, args.slug);
-    if (!plan) { console.error(`error: plan "${args.slug}" not found`); process.exit(1); }
+    if (!plan) {
+      console.error(`error: plan "${args.slug}" not found`);
+      process.exit(1);
+    }
     const f = plan.frontmatter;
     const lines: string[] = [];
     lines.push(`## ${f.slug} — ${f.title}`);
-    lines.push(`**Status:** ${statusBadge(f.status)}${f.category ? ` · **Category:** ${f.category}` : ''} · **Priority:** ${fmtPrio(f.priority)}`);
+    lines.push(
+      `**Status:** ${statusBadge(f.status)}${f.category ? ` · **Category:** ${f.category}` : ''} · **Priority:** ${fmtPrio(f.priority)}`,
+    );
     lines.push('', `**TLDR:** ${f.tldr}`, '');
 
     if (f.tasks?.length) {
       lines.push(`### Tasks (${fmtTasks(f.tasks)})`);
       lines.push('| ID | Status | Description |', '|----|--------|-------------|');
       for (const t of f.tasks) {
-        const refs = t.refs?.length ? ` ${t.refs.map(r => resolveRef(r, PLANS_DIR, ROADMAPS_DIR, RESEARCH_DIR)).map(ri => `\`${ri.label}\``).join(' ')}` : '';
+        const refs = t.refs?.length
+          ? ` ${t.refs
+              .map((r) => resolveRef(r, PLANS_DIR, ROADMAPS_DIR, RESEARCH_DIR))
+              .map((ri) => `\`${ri.label}\``)
+              .join(' ')}`
+          : '';
         lines.push(`| ${fmtCell(t.id, 20)} | ${fmtCell(t.status, 11)} | ${t.desc || t.title || '—'}${refs} |`);
       }
       lines.push('');
     }
     if (f.acceptance?.length) {
-      const items = f.acceptance.map(a => typeof a === 'string' ? { id: '', desc: a, status: 'pending' } : a);
+      const items = f.acceptance.map((a) => (typeof a === 'string' ? { id: '', desc: a, status: 'pending' } : a));
       const done = items.filter((a: { status?: string }) => a.status === 'done').length;
       lines.push(`### Acceptance (${done}/${items.length})`);
       lines.push('| ID | Status | Criteria |', '|----|--------|----------|');
-      for (const a of items) lines.push(`| ${fmtCell(a.id || '', 15)} | ${fmtCell(a.status || 'pending', 11)} | ${a.desc} |`);
+      for (const a of items)
+        lines.push(`| ${fmtCell(a.id || '', 15)} | ${fmtCell(a.status || 'pending', 11)} | ${a.desc} |`);
       lines.push('');
     }
 
@@ -106,13 +125,17 @@ const showCmd = defineCommand({
       lines.push('### References');
       for (const r of refs) {
         const resolved = resolveRef(r, PLANS_DIR, ROADMAPS_DIR, RESEARCH_DIR);
-        lines.push(`- \`${resolved.label}\` — ${resolved.description || resolved.target}${resolved.type === 'research' && findResearchFile(RESEARCH_DIR, resolved.target) ? ` (\`research show ${resolved.target}\`)` : ''}`);
+        lines.push(
+          `- \`${resolved.label}\` — ${resolved.description || resolved.target}${resolved.type === 'research' && findResearchFile(RESEARCH_DIR, resolved.target) ? ` (\`research show ${resolved.target}\`)` : ''}`,
+        );
       }
       lines.push('');
     }
 
     const allDocs = [...readAllPlans(PLANS_DIR), ...readAllPlans(ROADMAPS_DIR)];
-    const backlinks = allDocs.filter(d => d.slug !== plan.slug && collectRefs(d).some(r => r === `plan:${plan.slug}`));
+    const backlinks = allDocs.filter(
+      (d) => d.slug !== plan.slug && collectRefs(d).some((r) => r === `plan:${plan.slug}`),
+    );
     if (backlinks.length) {
       lines.push('### Referenced by');
       for (const b of backlinks) lines.push(`- \`${b.slug}\` — ${b.frontmatter.tldr}`);
@@ -132,25 +155,34 @@ const statusCmd = defineCommand({
   meta: { name: 'status', description: 'Grouped status overview' },
   run() {
     const plans = readAllPlans(PLANS_DIR);
-    const active = plans.filter(p => p.frontmatter.status === 'active');
-    const paused = plans.filter(p => p.frontmatter.status === 'paused');
-    const done = plans.filter(p => p.frontmatter.status === 'done');
+    const active = plans.filter((p) => p.frontmatter.status === 'active');
+    const paused = plans.filter((p) => p.frontmatter.status === 'paused');
+    const done = plans.filter((p) => p.frontmatter.status === 'done');
 
     const lines: string[] = [];
-    lines.push('## Status Overview', '', `**${active.length} active · ${paused.length} paused · ${done.length} done**`, '');
+    lines.push(
+      '## Status Overview',
+      '',
+      `**${active.length} active · ${paused.length} paused · ${done.length} done**`,
+      '',
+    );
 
     if (active.length) {
       lines.push('### Active');
       const byCat: Record<string, typeof active> = {};
       for (const p of active) {
         const cat = p.frontmatter.category || 'other';
-        (byCat[cat] ||= []).push(p);
+        if (!byCat[cat]) byCat[cat] = [];
+        byCat[cat].push(p);
       }
       for (const [cat, catPlans] of Object.entries(byCat).sort()) {
         lines.push(`**${cat}**`);
         for (const p of catPlans) {
           const f = p.frontmatter;
-          lines.push(`  - \`${f.slug}\`${f.priority ? ` · prio ${f.priority}` : ''}${f.tasks ? ` · ${fmtTasks(f.tasks)} tasks` : ''}`, `    ${f.tldr}`);
+          lines.push(
+            `  - \`${f.slug}\`${f.priority ? ` · prio ${f.priority}` : ''}${f.tasks ? ` · ${fmtTasks(f.tasks)} tasks` : ''}`,
+            `    ${f.tldr}`,
+          );
         }
         lines.push('');
       }
@@ -171,33 +203,19 @@ const validateCmd = defineCommand({
   },
   run({ args }) {
     const domains = args.domain ? ALL_DOMAINS.filter(([d]) => d === args.domain) : ALL_DOMAINS;
-    let totalChecked = 0;
-    const errors: string[] = [];
-    const warnings: string[] = [];
+    const { checked, errors, warnings } = validateDomains(domains);
 
-    for (const [domain, dir] of domains) {
-      const plans = readAllPlans(dir);
-      totalChecked += plans.length;
-      for (const p of plans) {
-        const f = p.frontmatter;
-
-        if (domain === 'plans') {
-          for (const field of ['title', 'slug', 'status', 'category', 'created', 'tldr']) {
-            if (f[field] == null || f[field] === '') errors.push(`${domain}/${f.slug}: missing required field "${field}"`);
-          }
-          if (f.status && !VALID_STATUSES.includes(f.status)) errors.push(`${domain}/${f.slug}: invalid status "${f.status}"`);
-          if (f.tasks) for (const t of f.tasks) if (!VALID_TASK_STATUSES.includes(t.status)) errors.push(`${domain}/${f.slug}.tasks.${t.id}: invalid status "${t.status}"`);
-          if (f.created && typeof f.created !== 'number') warnings.push(`${domain}/${f.slug}: "created" should be a number`);
-        } else {
-          if (!f.title && !f.slug) warnings.push(`${domain}/${p.slug}: missing title and slug`);
-          if (f.created && typeof f.created !== 'number') warnings.push(`${domain}/${f.slug}: "created" should be a number`);
-        }
-      }
+    console.log('## Validate', '', `Checked ${checked} files across ${domains.length} domains.`, '');
+    if (errors.length) {
+      console.log(`### Errors (${errors.length})`);
+      for (const e of errors) console.log(`- ✗ ${e}`);
+      console.log('');
     }
-
-    console.log('## Validate', '', `Checked ${totalChecked} files across ${domains.length} domains.`, '');
-    if (errors.length) { console.log(`### Errors (${errors.length})`); for (const e of errors) console.log(`- ✗ ${e}`); console.log(''); }
-    if (warnings.length) { console.log(`### Warnings (${warnings.length})`); for (const w of warnings) console.log(`- ⚠ ${w}`); console.log(''); }
+    if (warnings.length) {
+      console.log(`### Warnings (${warnings.length})`);
+      for (const w of warnings) console.log(`- ⚠ ${w}`);
+      console.log('');
+    }
     if (!errors.length && !warnings.length) console.log('All files valid ✅', '');
   },
 });
@@ -209,11 +227,17 @@ const planSetStatusCmd = defineCommand({
     status: { type: 'positional', description: 'New status', required: true },
   },
   run({ args }) {
-    if (!VALID_STATUSES.includes(args.status)) { console.error(`error: invalid status "${args.status}"`); return; }
-    const plan = readAllPlans(PLANS_DIR).find(p => p.slug === args.slug);
-    if (!plan) { console.error(`error: plan "${args.slug}" not found`); return; }
+    if (!VALID_STATUSES.includes(args.status)) {
+      console.error(`error: invalid status "${args.status}"`);
+      return;
+    }
+    const plan = readAllPlans(PLANS_DIR).find((p) => p.slug === args.slug);
+    if (!plan) {
+      console.error(`error: plan "${args.slug}" not found`);
+      return;
+    }
     plan.frontmatter.status = args.status;
-    writeFileSync(join(plan.dir, plan.filename), serializePlanFile(plan), 'utf-8');
+    writePlanFileAtomic(plan);
     console.log(`ok: ${args.slug} status → ${args.status}`);
   },
 });
@@ -226,14 +250,26 @@ const planTaskStatusCmd = defineCommand({
     status: { type: 'positional', description: 'New status', required: true },
   },
   run({ args }) {
-    if (!VALID_TASK_STATUSES.includes(args.status)) { console.error(`error: invalid task status "${args.status}"`); return; }
-    const plan = readAllPlans(PLANS_DIR).find(p => p.slug === args.slug);
-    if (!plan) { console.error(`error: plan "${args.slug}" not found`); return; }
-    if (!plan.frontmatter.tasks) { console.error(`error: plan "${args.slug}" has no tasks`); return; }
-    const task = plan.frontmatter.tasks.find(t => t.id === args.id);
-    if (!task) { console.error(`error: task "${args.id}" not found in "${args.slug}"`); return; }
+    if (!VALID_TASK_STATUSES.includes(args.status)) {
+      console.error(`error: invalid task status "${args.status}"`);
+      return;
+    }
+    const plan = readAllPlans(PLANS_DIR).find((p) => p.slug === args.slug);
+    if (!plan) {
+      console.error(`error: plan "${args.slug}" not found`);
+      return;
+    }
+    if (!plan.frontmatter.tasks) {
+      console.error(`error: plan "${args.slug}" has no tasks`);
+      return;
+    }
+    const task = plan.frontmatter.tasks.find((t) => t.id === args.id);
+    if (!task) {
+      console.error(`error: task "${args.id}" not found in "${args.slug}"`);
+      return;
+    }
     task.status = args.status;
-    writeFileSync(join(plan.dir, plan.filename), serializePlanFile(plan), 'utf-8');
+    writePlanFileAtomic(plan);
     console.log(`ok: ${args.slug}.tasks.${args.id} → ${args.status}`);
   },
 });
@@ -247,13 +283,22 @@ const planAddTaskCmd = defineCommand({
     status: { type: 'positional', description: 'Initial status', required: true },
   },
   run({ args }) {
-    if (!VALID_TASK_STATUSES.includes(args.status)) { console.error(`error: invalid task status "${args.status}"`); return; }
-    const plan = readAllPlans(PLANS_DIR).find(p => p.slug === args.slug);
-    if (!plan) { console.error(`error: plan "${args.slug}" not found`); return; }
+    if (!VALID_TASK_STATUSES.includes(args.status)) {
+      console.error(`error: invalid task status "${args.status}"`);
+      return;
+    }
+    const plan = readAllPlans(PLANS_DIR).find((p) => p.slug === args.slug);
+    if (!plan) {
+      console.error(`error: plan "${args.slug}" not found`);
+      return;
+    }
     if (!plan.frontmatter.tasks) plan.frontmatter.tasks = [];
-    if (plan.frontmatter.tasks.some((t: { id: string }) => t.id === args.id)) { console.error(`error: task "${args.id}" already exists in "${args.slug}"`); return; }
+    if (plan.frontmatter.tasks.some((t: { id: string }) => t.id === args.id)) {
+      console.error(`error: task "${args.id}" already exists in "${args.slug}"`);
+      return;
+    }
     plan.frontmatter.tasks.push({ id: args.id, desc: args.desc, status: args.status });
-    writeFileSync(join(plan.dir, plan.filename), serializePlanFile(plan), 'utf-8');
+    writePlanFileAtomic(plan);
     console.log(`ok: ${args.slug}.tasks.${args.id} added (${args.status})`);
   },
 });
@@ -273,22 +318,25 @@ const planAddCmd = defineCommand({
     const slug = slugify(args.title);
     const filename = `${today}-${slug}.md`;
     const filepath = join(PLANS_DIR, filename);
-    if (existsSync(filepath)) { console.error(`error: file "${filename}" already exists`); return; }
+    if (existsSync(filepath)) {
+      console.error(`error: file "${filename}" already exists`);
+      return;
+    }
 
-    const frontmatter = {
+    const frontmatter: PlanMeta = {
       title: args.title,
       slug,
       status: args.status,
       category: args.category,
-      created: parseInt(today),
+      created: Number.parseInt(today),
       tldr: args.tldr,
-      priority: args.priority ? parseInt(args.priority) : undefined,
+      priority: args.priority ? Number.parseInt(args.priority) : undefined,
       tasks: [],
       acceptance: [],
       references: args.ref ? [args.ref] : undefined,
     };
-    const body = `# ${args.title}\n\n## Goal\n\nTODO: define goal\n\n## Scope\n\nTODO: define scope\n`;
-    writeFileSync(filepath, `---\n${yaml.dump(frontmatter, { lineWidth: 120, quotingType: "'", forceQuotes: false, noCompatMode: true })}---\n${body}\n`, 'utf-8');
+    const body = `# ${args.title}\n\n## Goal\n\nTODO: define goal\n\n## Scope\n\nTODO: define scope`;
+    writePlanFileAtomic({ slug, filename, dir: PLANS_DIR, frontmatter, body, raw: '' });
     console.log(`ok: created plan "${slug}" at plans/${filename}`);
   },
 });
@@ -298,7 +346,10 @@ const planRefsCmd = defineCommand({
   args: { slug: { type: 'positional', description: 'Plan slug', required: true } },
   run({ args }) {
     const plan = findPlan(PLANS_DIR, ROADMAPS_DIR, args.slug);
-    if (!plan) { console.error(`error: plan "${args.slug}" not found`); return; }
+    if (!plan) {
+      console.error(`error: plan "${args.slug}" not found`);
+      return;
+    }
 
     const lines: string[] = [];
     lines.push(`## References for ${args.slug}`, '');
@@ -316,7 +367,9 @@ const planRefsCmd = defineCommand({
     }
 
     const allDocs = [...readAllPlans(PLANS_DIR), ...readAllPlans(ROADMAPS_DIR)];
-    const backlinks = allDocs.filter(d => d.slug !== plan.slug && collectRefs(d).some(r => r === `plan:${args.slug}`));
+    const backlinks = allDocs.filter(
+      (d) => d.slug !== plan.slug && collectRefs(d).some((r) => r === `plan:${args.slug}`),
+    );
     if (backlinks.length) {
       lines.push('### Inbound references (backlinks)');
       for (const b of backlinks) lines.push(`- \`${b.slug}\` — ${b.frontmatter.tldr}`);
@@ -344,10 +397,15 @@ const roadmapListCmd = defineCommand({
   meta: { name: 'list', description: 'List all roadmaps' },
   run() {
     const roadmaps = readAllPlans(ROADMAPS_DIR);
-    const rows = ['| Slug | Status | Period | Prio | Entries | Tldr |', '|------|--------|--------|------|---------|------|'];
+    const rows = [
+      '| Slug | Status | Period | Prio | Entries | Tldr |',
+      '|------|--------|--------|------|---------|------|',
+    ];
     for (const r of roadmaps) {
       const f = r.frontmatter;
-      rows.push(`| ${fmtCell(f.slug, 25)} | ${fmtCell(f.status, 8)} | ${fmtCell(f.period || '—', 6)} | ${fmtPrio(f.priority).padStart(4)} | ${String(f.entries?.length ?? 0).padStart(3)}  | ${fmtCell(f.tldr, 40)} |`);
+      rows.push(
+        `| ${fmtCell(f.slug, 25)} | ${fmtCell(f.status, 8)} | ${fmtCell(f.period || '—', 6)} | ${fmtPrio(f.priority).padStart(4)} | ${String(f.entries?.length ?? 0).padStart(3)}  | ${fmtCell(f.tldr, 40)} |`,
+      );
     }
     console.log(rows.join('\n'));
   },
@@ -358,7 +416,10 @@ const roadmapShowCmd = defineCommand({
   args: { slug: { type: 'positional', description: 'Roadmap slug', required: true } },
   run({ args }) {
     const plan = findPlan(PLANS_DIR, ROADMAPS_DIR, args.slug);
-    if (!plan) { console.error(`error: roadmap "${args.slug}" not found`); return; }
+    if (!plan) {
+      console.error(`error: roadmap "${args.slug}" not found`);
+      return;
+    }
     const f = plan.frontmatter;
     const lines: string[] = [];
     lines.push(`## ${f.slug} — ${f.title}`);
@@ -385,7 +446,10 @@ const researchListCmd = defineCommand({
   meta: { name: 'list', description: 'List research files' },
   run() {
     const files = listResearchFiles(RESEARCH_DIR);
-    if (!files.length) { console.log('No research files found.'); return; }
+    if (!files.length) {
+      console.log('No research files found.');
+      return;
+    }
     const rows = ['| Slug | File |', '|------|------|'];
     for (const f of files) rows.push(`| ${fmtCell(f.slug, 40)} | ${fmtCell(relative(RESEARCH_DIR, f.filepath), 50)} |`);
     console.log(rows.join('\n'));
@@ -397,7 +461,10 @@ const researchShowCmd = defineCommand({
   args: { slug: { type: 'positional', description: 'Research file slug or path', required: true } },
   run({ args }) {
     const file = findResearchFile(RESEARCH_DIR, args.slug);
-    if (!file) { console.error(`error: research file "${args.slug}" not found`); return; }
+    if (!file) {
+      console.error(`error: research file "${args.slug}" not found`);
+      return;
+    }
     console.log(`## ${file.slug}`);
     console.log(`*File: ${relative(RESEARCH_DIR, file.filepath)}*\n`);
     console.log(file.content);
@@ -421,24 +488,32 @@ const graphCmd = defineCommand({
 
     if (args.slug) {
       const plan = findPlan(PLANS_DIR, ROADMAPS_DIR, args.slug);
-      if (!plan) { console.error(`error: plan "${args.slug}" not found`); return; }
+      if (!plan) {
+        console.error(`error: plan "${args.slug}" not found`);
+        return;
+      }
       lines.push(`## Dependency graph for ${args.slug}`, '');
       const refs = collectRefs(plan);
       for (const r of refs) {
         const resolved = resolveRef(r, PLANS_DIR, ROADMAPS_DIR, RESEARCH_DIR);
         const arrow = resolved.type === 'plan' || resolved.type === 'research' ? '→' : '↗';
-        lines.push(`  ${args.slug} ${arrow} ${resolved.label}  ${resolved.description ? `— ${resolved.description}` : ''}`);
+        lines.push(
+          `  ${args.slug} ${arrow} ${resolved.label}  ${resolved.description ? `— ${resolved.description}` : ''}`,
+        );
       }
-      const backlinks = allDocs.filter(d => d.slug !== plan.slug && collectRefs(d).some(r => r === `plan:${args.slug}`));
+      const backlinks = allDocs.filter(
+        (d) => d.slug !== plan.slug && collectRefs(d).some((r) => r === `plan:${args.slug}`),
+      );
       for (const b of backlinks) lines.push(`  ${b.slug} → ${args.slug}`);
     } else {
       lines.push('## Full dependency graph', '');
       for (const doc of allDocs) {
         const refs = collectRefs(doc);
-        if (refs.length) for (const r of refs) {
-          const resolved = resolveRef(r, PLANS_DIR, ROADMAPS_DIR, RESEARCH_DIR);
-          lines.push(`  ${doc.slug} → ${resolved.label}`);
-        }
+        if (refs.length)
+          for (const r of refs) {
+            const resolved = resolveRef(r, PLANS_DIR, ROADMAPS_DIR, RESEARCH_DIR);
+            lines.push(`  ${doc.slug} → ${resolved.label}`);
+          }
       }
     }
 
@@ -458,28 +533,54 @@ const setupCmd = defineCommand({
     const target = join(base, 'personal-context');
 
     if (existsSync(target)) {
-      if (existsSync(join(target, '.git'))) { console.error(`error: "${target}" already exists and is a git repo`); return; }
+      if (existsSync(join(target, '.git'))) {
+        console.error(`error: "${target}" already exists and is a git repo`);
+        return;
+      }
       const files = readdirSync(target);
-      if (files.length > 0) { console.error(`error: "${target}" already exists and is not empty`); return; }
+      if (files.length > 0) {
+        console.error(`error: "${target}" already exists and is not empty`);
+        return;
+      }
     }
 
-    const dirs = ['', 'bin', 'plans', 'roadmaps', 'progress', 'ideas', 'references', 'archive'];
+    const dirs = [
+      '',
+      'bin',
+      'plans',
+      'roadmaps',
+      'progress',
+      'ideas',
+      'processes',
+      'references',
+      'archive',
+      'handoffs',
+    ];
     for (const d of dirs) mkdirSync(join(target, d), { recursive: true });
 
     for (const [filepath, content] of Object.entries(SCAFFOLD_FILES)) {
       writeFileSync(join(target, filepath), content, 'utf-8');
     }
 
-    const pkg = { name: 'personal-context', private: true, type: 'module', scripts: { ctx: 'bun run bin/ctx.ts' }, dependencies: { '@pc-ctx/cli': '^0.1.0' } };
-    writeFileSync(join(target, 'package.json'), JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
+    const pkg = {
+      name: 'personal-context',
+      private: true,
+      type: 'module',
+      scripts: { ctx: 'bun run bin/ctx.ts' },
+      dependencies: { '@pc-ctx/cli': '^0.1.0' },
+    };
+    writeFileSync(join(target, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`, 'utf-8');
 
     const proxyBin = `#!/usr/bin/env node\nimport('@pc-ctx/cli').catch(() => {\n  console.error('Install @pc-ctx/cli first: pnpm add @pc-ctx/cli');\n  process.exit(1);\n});\n`;
     writeFileSync(join(target, 'bin', 'ctx.ts'), proxyBin, 'utf-8');
     console.log(`\nDone! Context created at ${target}`);
-    console.log(`\nNext steps:`);
+    console.log('\nNext steps:');
     console.log(`  cd ${target}`);
-    console.log(`  bun i && bun run ctx status`);
-    if (args.remote) console.log(`  git init && git add -A && git commit -m "initial: scaffold" && git remote add origin ${args.remote} && git push -u origin main`);
+    console.log('  bun i && bun run ctx status');
+    if (args.remote)
+      console.log(
+        `  git init && git add -A && git commit -m "initial: scaffold" && git remote add origin ${args.remote} && git push -u origin main`,
+      );
   },
 });
 
@@ -494,12 +595,18 @@ const syncCmd = defineCommand({
     if (!args.push) {
       console.log('Pulling from remote...');
       const pull = spawnSync('git', ['pull'], { cwd: repo, stdio: 'inherit' });
-      if (pull.status !== 0) { console.error('error: pull failed'); return; }
+      if (pull.status !== 0) {
+        console.error('error: pull failed');
+        return;
+      }
     }
     if (!args.pull) {
       console.log('Pushing to remote...');
       const push = spawnSync('git', ['push'], { cwd: repo, stdio: 'inherit' });
-      if (push.status !== 0) { console.error('error: push failed'); return; }
+      if (push.status !== 0) {
+        console.error('error: push failed');
+        return;
+      }
     }
     console.log('Done ✅');
   },
@@ -514,7 +621,7 @@ async function fetchLatestTarball(repo: string) {
     headers: { Accept: 'application/vnd.github.v3+json', 'User-Agent': 'pc-ctx' },
   });
   if (!res.ok) throw new Error(`GitHub API error: ${res.status}`);
-  const release = await res.json() as { tag_name: string; assets: { name: string; browser_download_url: string }[] };
+  const release = (await res.json()) as { tag_name: string; assets: { name: string; browser_download_url: string }[] };
   const asset = release.assets.find((a: { name: string }) => a.name === 'web-ui.tar.gz');
   if (!asset) throw new Error('No web-ui.tar.gz found in latest release');
   return { tag: release.tag_name, url: asset.browser_download_url };
@@ -523,7 +630,7 @@ async function fetchLatestTarball(repo: string) {
 async function downloadWithProgress(url: string, dest: string) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Download failed: ${res.status}`);
-  const total = parseInt(res.headers.get('content-length') || '0');
+  const total = Number.parseInt(res.headers.get('content-length') || '0');
   const writer = createWriteStream(dest);
   let received = 0;
 
@@ -551,7 +658,11 @@ function extractTarball(tarball: string, dest: string) {
 }
 
 function getCachedVersion(): string | null {
-  try { return readFileSync(UI_VERSION_FILE, 'utf-8').trim(); } catch { return null; }
+  try {
+    return readFileSync(UI_VERSION_FILE, 'utf-8').trim();
+  } catch {
+    return null;
+  }
 }
 
 function writeVersion(v: string) {
@@ -562,7 +673,12 @@ function writeVersion(v: string) {
 const uiCmd = defineCommand({
   meta: { name: 'ui', description: 'Download, cache, and serve the web UI locally' },
   args: {
-    serve: { type: 'boolean', description: 'Serve cached UI (downloads first if missing)', default: false, required: false },
+    serve: {
+      type: 'boolean',
+      description: 'Serve cached UI (downloads first if missing)',
+      default: false,
+      required: false,
+    },
     update: { type: 'boolean', description: 'Force re-download', default: false, required: false },
     port: { type: 'string', description: 'Local server port', default: '3333', required: false },
     repo: { type: 'string', description: 'GitHub repo (owner/name)', default: 'samir1498/pc-ctx-web', required: false },
@@ -580,7 +696,11 @@ const uiCmd = defineCommand({
       await downloadWithProgress(url, tmp);
       extractTarball(tmp, UI_CACHE);
       writeVersion(tag);
-      try { execSync(`rm "${tmp}"`); } catch { /* ok */ }
+      try {
+        execSync(`rm "${tmp}"`);
+      } catch {
+        /* ok */
+      }
       console.log(` Extracted to ${UI_CACHE}`);
     } else {
       const cached = getCachedVersion();
@@ -593,8 +713,10 @@ const uiCmd = defineCommand({
       try {
         const cfg = JSON.parse(readFileSync(join(homedir(), '.pc-ctx', 'config.json'), 'utf-8'));
         pat = cfg.pat || '';
-      } catch { /* ok */ }
-      startUiServer(parseInt(args.port), UI_CACHE, pat);
+      } catch {
+        /* ok */
+      }
+      startUiServer(Number.parseInt(args.port), UI_CACHE, pat);
       await new Promise(() => {}); // keep alive
     }
   },
@@ -611,15 +733,18 @@ const configCmd = defineCommand({
     if (args.show) {
       try {
         const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
-        console.log('PAT:', cfg.pat ? cfg.pat.slice(0, 8) + '...' : '(not set)');
+        console.log('PAT:', cfg.pat ? '(set)' : '(not set)');
       } catch {
         console.log('PAT: (not set)');
       }
       return;
     }
-    if (!args.pat) { console.error('Usage: ctx config --pat <token>'); return; }
+    if (!args.pat) {
+      console.error('Usage: ctx config --pat <token>');
+      return;
+    }
     mkdirSync(dirname(configPath), { recursive: true });
-    writeFileSync(configPath, JSON.stringify({ pat: args.pat }, null, 2) + '\n', 'utf-8');
+    writeFileSync(configPath, `${JSON.stringify({ pat: args.pat }, null, 2)}\n`, { mode: 0o600 });
     console.log('PAT saved');
   },
 });
@@ -629,7 +754,10 @@ function makeDomainCmd(name: string, description: string, dir: string) {
     meta: { name: 'list', description: `List all ${name}` },
     run() {
       const items = readAllPlans(dir);
-      if (!items.length) { console.log(`No ${name} found.`); return; }
+      if (!items.length) {
+        console.log(`No ${name} found.`);
+        return;
+      }
       const rows = ['| Slug | Title |', '|------|-------|'];
       for (const p of items) rows.push(`| ${fmtCell(p.slug, 40)} | ${fmtCell(p.frontmatter.title || '—', 60)} |`);
       console.log(rows.join('\n'));
@@ -640,8 +768,11 @@ function makeDomainCmd(name: string, description: string, dir: string) {
     meta: { name: 'show', description: `Show ${name} details` },
     args: { slug: { type: 'positional', description: `${name} slug`, required: true } },
     run({ args }) {
-      const item = readAllPlans(dir).find(p => p.slug === args.slug);
-      if (!item) { console.error(`error: "${args.slug}" not found`); return; }
+      const item = readAllPlans(dir).find((p) => p.slug === args.slug);
+      if (!item) {
+        console.error(`error: "${args.slug}" not found`);
+        return;
+      }
       console.log(`## ${item.frontmatter.title || item.slug}`);
       console.log(`**Slug:** ${item.slug}`);
       if (item.body) console.log('', item.body);
@@ -653,15 +784,28 @@ function makeDomainCmd(name: string, description: string, dir: string) {
     args: {
       title: { type: 'positional', description: 'Title', required: true },
       slug: { type: 'string', description: 'Slug (defaults from title)', required: false },
+      category: { type: 'string', description: `Category (default: ${name})`, required: false },
+      tldr: { type: 'string', description: 'One-line summary (default: title)', required: false },
     },
     run({ args }) {
       const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       const slug = args.slug || slugify(args.title);
       const filename = `${today}-${slug}.md`;
       const filepath = join(dir, filename);
-      if (existsSync(filepath)) { console.error(`error: "${filename}" already exists`); return; }
-      const frontmatter: Record<string, unknown> = { title: args.title, slug, created: parseInt(today) };
-      writeFileSync(filepath, `---\n${yaml.dump(frontmatter, { lineWidth: 120 })}---\n`, 'utf-8');
+      if (existsSync(filepath)) {
+        console.error(`error: "${filename}" already exists`);
+        return;
+      }
+      // Every domain follows the same standardized required-field schema (REQUIRED_DOC_FIELDS).
+      const frontmatter = {
+        title: args.title,
+        slug,
+        status: 'active',
+        category: args.category || name,
+        created: Number.parseInt(today),
+        tldr: args.tldr || args.title,
+      } as unknown as PlanMeta;
+      writePlanFileAtomic({ slug, filename, dir, frontmatter, body: `# ${args.title}\n`, raw: '' });
       console.log(`ok: created ${filename}`);
     },
   });
@@ -677,6 +821,7 @@ const processesCmd = makeDomainCmd('processes', 'Manage process docs', PROCESSES
 const progressCmd = makeDomainCmd('progress', 'Manage progress logs', PROGRESS_DIR);
 const referencesCmd = makeDomainCmd('references', 'Manage reference docs', REFERENCES_DIR);
 const archiveCmd = makeDomainCmd('archive', 'Manage archived items', ARCHIVE_DIR);
+const handoffsCmd = makeDomainCmd('handoffs', 'Manage session handoffs', HANDOFFS_DIR);
 
 const roadmapAddCmd = defineCommand({
   meta: { name: 'add', description: 'Create a new roadmap' },
@@ -691,12 +836,20 @@ const roadmapAddCmd = defineCommand({
     const slug = slugify(args.title);
     const filename = `${today}-${slug}.md`;
     const filepath = join(ROADMAPS_DIR, filename);
-    if (existsSync(filepath)) { console.error(`error: "${filename}" already exists`); return; }
-    const frontmatter: Record<string, unknown> = {
-      title: args.title, slug, status: 'active', period: args.period, tldr: args.tldr,
-      priority: args.priority ? parseInt(args.priority) : undefined, entries: [],
-    };
-    writeFileSync(filepath, `---\n${yaml.dump(frontmatter, { lineWidth: 120 })}---\n`, 'utf-8');
+    if (existsSync(filepath)) {
+      console.error(`error: "${filename}" already exists`);
+      return;
+    }
+    const frontmatter = {
+      title: args.title,
+      slug,
+      status: 'active',
+      period: args.period,
+      tldr: args.tldr,
+      priority: args.priority ? Number.parseInt(args.priority) : undefined,
+      entries: [],
+    } as unknown as PlanMeta;
+    writePlanFileAtomic({ slug, filename, dir: ROADMAPS_DIR, frontmatter, body: `# ${args.title}\n`, raw: '' });
     console.log(`ok: created roadmap "${slug}"`);
   },
 });
@@ -718,6 +871,7 @@ const mainCmd = defineCommand({
     progress: progressCmd,
     references: referencesCmd,
     archive: archiveCmd,
+    handoffs: handoffsCmd,
     graph: graphCmd,
     setup: setupCmd,
     sync: syncCmd,
