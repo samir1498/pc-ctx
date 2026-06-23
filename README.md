@@ -39,6 +39,11 @@ ctx roadmap show <slug>
 ctx research list
 ctx research show <slug>
 
+# Config
+ctx config --show             # show current config
+ctx config --pat ghp_xxx      # set GitHub PAT (for local UI server)
+ctx config --repo owner/repo  # custom web UI repo (optional)
+
 # Web UI (local)
 ctx ui                        # download + cache latest
 ctx ui --serve                # download + serve on localhost

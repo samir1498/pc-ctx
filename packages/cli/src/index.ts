@@ -607,6 +607,41 @@ const uiCmd = defineCommand({
   },
 });
 
+const configCmd = defineCommand({
+  meta: { name: 'config', description: 'Set CLI configuration (PAT, repo)' },
+  args: {
+    pat: { type: 'string', description: 'GitHub Personal Access Token for API calls', required: false },
+    repo: { type: 'string', description: 'Repo owner/name for web UI releases', required: false },
+    show: { type: 'boolean', description: 'Show current config', default: false, required: false },
+  },
+  run({ args }) {
+    const configPath = join(homedir(), '.pc-ctx', 'config.json');
+    let config: Record<string, string> = {};
+    try { config = JSON.parse(readFileSync(configPath, 'utf-8')); } catch { /* ok */ }
+
+    if (args.show) {
+      console.log('Config:', configPath);
+      for (const [k, v] of Object.entries(config)) {
+        console.log(`  ${k}: ${k === 'pat' ? v.slice(0, 8) + '...' : v}`);
+      }
+      return;
+    }
+
+    if (args.pat) config.pat = args.pat;
+    if (args.repo) config.repo = args.repo;
+
+    if (!args.pat && !args.repo) {
+      console.error('Usage: ctx config --pat <token> [--repo owner/repo]');
+      console.error('       ctx config --show');
+      return;
+    }
+
+    mkdirSync(dirname(configPath), { recursive: true });
+    writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+    console.log('Config updated at', configPath);
+  },
+});
+
 const mainCmd = defineCommand({
   meta: { name: 'ctx', description: 'personal-context CLI — plan, roadmap, and research management' },
   subCommands: {
@@ -621,6 +656,7 @@ const mainCmd = defineCommand({
     setup: setupCmd,
     sync: syncCmd,
     ui: uiCmd,
+    config: configCmd,
   },
 });
 
