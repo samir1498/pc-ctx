@@ -3,7 +3,6 @@ import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, create
 import { spawnSync, execSync } from 'child_process';
 import { join, dirname, relative } from 'path';
 import { homedir } from 'os';
-import { createServer } from 'http';
 import { defineCommand, createMain } from 'citty';
 import yaml from 'js-yaml';
 import {
@@ -531,75 +530,6 @@ function writeVersion(v: string) {
   writeFileSync(UI_VERSION_FILE, v, 'utf-8');
 }
 
-function serveStatic(port: number, dir: string, pat?: string) {
-  const extMap: Record<string, string> = {
-    '.html': 'text/html; charset=utf-8',
-    '.js': 'text/javascript; charset=utf-8',
-    '.css': 'text/css; charset=utf-8',
-    '.png': 'image/png',
-    '.svg': 'image/svg+xml',
-    '.ico': 'image/x-icon',
-    '.json': 'application/json',
-    '.woff2': 'font/woff2',
-  };
-
-  const server = createServer(async (req, res) => {
-    const url = req.url || '';
-
-    if (url.startsWith('/api/')) {
-      const repo = pat ? `https://api.github.com/repos/${getRepo()}/contents` : null;
-      if (!repo) {
-        res.writeHead(403);
-        res.end('API calls require a GitHub PAT. Run: ctx config --pat <token>');
-        return;
-      }
-      const ghPath = url.replace('/api/', '');
-      const ghUrl = `https://api.github.com/repos/${getRepo()}/contents/${ghPath}?ref=main`;
-      const headers: Record<string, string> = {
-        Accept: url.includes('/progress/') || url.includes('/references/') || url.includes('/ideas/') || url.includes('/plans/') || url.includes('/roadmaps/')
-          ? 'application/vnd.github.raw+json'
-          : 'application/vnd.github.v3+json',
-        'User-Agent': 'pc-ctx',
-      };
-      if (pat) headers.Authorization = `Bearer ${pat}`;
-      try {
-        const ghRes = await fetch(ghUrl, { headers });
-        const body = await ghRes.text();
-        res.writeHead(ghRes.status, { 'Content-Type': 'application/json' });
-        res.end(body);
-      } catch {
-        res.writeHead(502);
-        res.end('Proxy error');
-      }
-      return;
-    }
-
-    let filePath = join(dir, url === '/' ? 'index.html' : url || '');
-    if (!existsSync(filePath) || !filePath.startsWith(dir)) {
-      filePath = join(dir, 'index.html');
-    }
-    const ext = filePath.slice(filePath.lastIndexOf('.'));
-    const contentType = extMap[ext] || 'application/octet-stream';
-    const content = readFileSync(filePath);
-    res.writeHead(200, { 'Content-Type': contentType });
-    res.end(content);
-  });
-
-  server.listen(port, () => {
-    console.log(` Web UI running at http://localhost:${port}`);
-    console.log(` Press Ctrl+C to stop`);
-  });
-}
-
-function getRepo() {
-  try {
-    const cfg = JSON.parse(readFileSync(join(homedir(), '.pc-ctx', 'config.json'), 'utf-8'));
-    return cfg.repo || 'samir1498/personal-context';
-  } catch {
-    return 'samir1498/personal-context';
-  }
-}
-
 const uiCmd = defineCommand({
   meta: { name: 'ui', description: 'Download, cache, and serve the web UI locally' },
   args: {
@@ -609,12 +539,7 @@ const uiCmd = defineCommand({
     repo: { type: 'string', description: 'GitHub repo (owner/name)', default: 'samir1498/pc-ctx-web', required: false },
   },
   async run({ args }) {
-    const configPath = join(homedir(), '.pc-ctx', 'config.json');
-    let config: { pat?: string; repo?: string } = {};
-    try { config = JSON.parse(readFileSync(configPath, 'utf-8')); } catch { /* ok */ }
-
-    const repo = args.repo || config.repo || 'samir1498/pc-ctx-web';
-    const pat = config.pat;
+    const repo = args.repo || 'samir1498/pc-ctx-web';
 
     if (args.update || !getCachedVersion()) {
       console.log(` Fetching latest release from ${repo}...`);
@@ -634,44 +559,39 @@ const uiCmd = defineCommand({
     }
 
     if (args.serve) {
-      serveStatic(parseInt(args.port), UI_CACHE, pat || undefined);
+      const { startUiServer } = await import('./ui-server.js');
+      let pat = '';
+      try {
+        const cfg = JSON.parse(readFileSync(join(homedir(), '.pc-ctx', 'config.json'), 'utf-8'));
+        pat = cfg.pat || '';
+      } catch { /* ok */ }
+      startUiServer(parseInt(args.port), UI_CACHE, pat);
       await new Promise(() => {}); // keep alive
     }
   },
 });
 
 const configCmd = defineCommand({
-  meta: { name: 'config', description: 'Set CLI configuration (PAT, repo)' },
+  meta: { name: 'config', description: 'Set GitHub PAT for local web UI' },
   args: {
-    pat: { type: 'string', description: 'GitHub Personal Access Token for API calls', required: false },
-    repo: { type: 'string', description: 'Repo owner/name for web UI releases', required: false },
+    pat: { type: 'string', description: 'GitHub Personal Access Token', required: false },
     show: { type: 'boolean', description: 'Show current config', default: false, required: false },
   },
   run({ args }) {
     const configPath = join(homedir(), '.pc-ctx', 'config.json');
-    let config: Record<string, string> = {};
-    try { config = JSON.parse(readFileSync(configPath, 'utf-8')); } catch { /* ok */ }
-
     if (args.show) {
-      console.log('Config:', configPath);
-      for (const [k, v] of Object.entries(config)) {
-        console.log(`  ${k}: ${k === 'pat' ? v.slice(0, 8) + '...' : v}`);
+      try {
+        const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
+        console.log('PAT:', cfg.pat ? cfg.pat.slice(0, 8) + '...' : '(not set)');
+      } catch {
+        console.log('PAT: (not set)');
       }
       return;
     }
-
-    if (args.pat) config.pat = args.pat;
-    if (args.repo) config.repo = args.repo;
-
-    if (!args.pat && !args.repo) {
-      console.error('Usage: ctx config --pat <token> [--repo owner/repo]');
-      console.error('       ctx config --show');
-      return;
-    }
-
+    if (!args.pat) { console.error('Usage: ctx config --pat <token>'); return; }
     mkdirSync(dirname(configPath), { recursive: true });
-    writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
-    console.log('Config updated at', configPath);
+    writeFileSync(configPath, JSON.stringify({ pat: args.pat }, null, 2) + '\n', 'utf-8');
+    console.log('PAT saved');
   },
 });
 
