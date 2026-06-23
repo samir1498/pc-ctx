@@ -2,118 +2,24 @@
 
 Deterministic plan management for AI agent context systems. CLI + MCP server for creating, tracking, and syncing markdown-based plans with YAML frontmatter.
 
-## Setup
-
 ```bash
-# Install
 npm install -g @pc-ctx/cli
-# or
-pnpm add -g @pc-ctx/cli
-
-# Create a new context system
-ctx setup ./my-project
-
-# Quick overview
-ctx status
+ctx setup ./my-project && ctx status
 ```
 
-## CLI
+## Documentation
 
-```bash
-ctx status                    # overview
-ctx list                      # all plans
-ctx list --status active      # active only
-ctx show <slug>               # plan details
-ctx validate                  # validate all files
+| Guide | For |
+|-------|-----|
+| [Getting started](docs/user/getting-started.md) | Setup, install, first tour |
+| [CLI reference](docs/user/cli-reference.md) | All `ctx` commands |
+| [MCP integration](docs/user/mcp-integration.md) | AI agent tool configuration |
+| [Plan format](docs/user/plan-format.md) | Frontmatter schema |
+| [Architecture](docs/dev/architecture.md) | Monorepo design decisions |
 
-# Mutate
-ctx plan add "My Plan" --priority 50
-ctx plan set-status <slug> done
-ctx plan task-status <slug> T1 in-progress
-ctx plan add-task <slug> T2 "Description" pending
-ctx plan references <slug>    # refs + backlinks
+## Contributing
 
-# Roadmaps & research
-ctx roadmap list
-ctx roadmap show <slug>
-ctx research list
-ctx research show <slug>
-
-# Config
-ctx config --show             # show current config
-ctx config --pat ghp_xxx      # set GitHub PAT (for local UI server)
-ctx config --repo owner/repo  # custom web UI repo (optional)
-
-# Web UI (local)
-ctx ui                        # download + cache latest
-ctx ui --serve                # download + serve on localhost
-ctx ui --serve --port 8080    # custom port
-ctx ui --update               # force re-download
-
-# Graph & sync
-ctx graph                     # dependency graph
-ctx graph <slug>              # graph for one plan
-ctx sync                      # git pull + push
-```
-
-## MCP (AI agents)
-
-The MCP server exposes 16 tools for AI agents. Add to your `opencode.json`:
-
-```json
-{
-  "mcp": {
-    "pc-ctx": {
-      "type": "local",
-      "command": ["pnpx", "@pc-ctx/mcp"],
-      "environment": {
-        "PC_CTX_ROOT": "/path/to/personal-context",
-        "PC_CTX_RESEARCH_DIR": "/path/to/personal-research"
-      },
-      "timeout": 15000
-    }
-  }
-}
-```
-
-Available tools: `plan_list`, `plan_show`, `plan_status`, `plan_validate`, `plan_set_status`, `plan_task_status`, `plan_add`, `plan_add_task`, `plan_references`, `roadmap_list`, `roadmap_show`, `research_list`, `research_show`, `graph`, `sync`, `setup`.
-
-## Plan format
-
-```markdown
----
-title: My Plan
-slug: my-plan
-status: active                # active | paused | done | cancelled
-category: feature
-created: 20260621
-tldr: One-line summary.
-priority: 50
-tasks:
-  - id: T1
-    desc: Do the thing
-    status: pending           # pending | in-progress | done | blocked
-references:
-  - research:some-research
-  - plan:related-plan
----
-```
-
-## Packages
-
-| Package | Description |
-|---------|-------------|
-| `@pc-ctx/core` | Types, YAML I/O, plan CRUD |
-| `@pc-ctx/cli` | `ctx` binary |
-| `@pc-ctx/mcp` | MCP server (16 tools) |
-
-## Development
-
-```bash
-git clone https://github.com/samir1498/pc-ctx
-cd pc-ctx && pnpm install && pnpm build
-pnpm check   # lint → knip → typecheck → depcruise → test → build
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
