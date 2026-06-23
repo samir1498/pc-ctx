@@ -28,6 +28,21 @@ const ROOT = process.env.PC_CTX_ROOT || process.cwd();
 const PLANS_DIR = join(ROOT, 'plans');
 const ROADMAPS_DIR = join(ROOT, 'roadmaps');
 const RESEARCH_DIR = process.env.PC_CTX_RESEARCH_DIR || join(ROOT, '..', 'personal-research');
+const IDEAS_DIR = join(ROOT, 'ideas');
+const PROCESSES_DIR = join(ROOT, 'processes');
+const PROGRESS_DIR = join(ROOT, 'progress');
+const REFERENCES_DIR = join(ROOT, 'references');
+const ARCHIVE_DIR = join(ROOT, 'archive');
+
+const ALL_DOMAINS: [string, string][] = [
+  ['plans', PLANS_DIR],
+  ['roadmaps', ROADMAPS_DIR],
+  ['ideas', IDEAS_DIR],
+  ['processes', PROCESSES_DIR],
+  ['progress', PROGRESS_DIR],
+  ['references', REFERENCES_DIR],
+  ['archive', ARCHIVE_DIR],
+];
 
 const listCmd = defineCommand({
   meta: { name: 'list', description: 'List all plans' },
@@ -151,22 +166,36 @@ const statusCmd = defineCommand({
 
 const validateCmd = defineCommand({
   meta: { name: 'validate', description: 'Validate all plan files' },
-  run() {
-    const plans = readAllPlans(PLANS_DIR);
+  args: {
+    domain: { type: 'string', description: 'Domain to validate (default: all)', required: false },
+  },
+  run({ args }) {
+    const domains = args.domain ? ALL_DOMAINS.filter(([d]) => d === args.domain) : ALL_DOMAINS;
+    let totalChecked = 0;
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    for (const p of plans) {
-      const f = p.frontmatter;
-      for (const field of ['title', 'slug', 'status', 'category', 'created', 'tldr']) {
-        if (f[field] == null || f[field] === '') errors.push(`${f.slug}: missing required field "${field}"`);
+    for (const [domain, dir] of domains) {
+      const plans = readAllPlans(dir);
+      totalChecked += plans.length;
+      for (const p of plans) {
+        const f = p.frontmatter;
+
+        if (domain === 'plans') {
+          for (const field of ['title', 'slug', 'status', 'category', 'created', 'tldr']) {
+            if (f[field] == null || f[field] === '') errors.push(`${domain}/${f.slug}: missing required field "${field}"`);
+          }
+          if (f.status && !VALID_STATUSES.includes(f.status)) errors.push(`${domain}/${f.slug}: invalid status "${f.status}"`);
+          if (f.tasks) for (const t of f.tasks) if (!VALID_TASK_STATUSES.includes(t.status)) errors.push(`${domain}/${f.slug}.tasks.${t.id}: invalid status "${t.status}"`);
+          if (f.created && typeof f.created !== 'number') warnings.push(`${domain}/${f.slug}: "created" should be a number`);
+        } else {
+          if (!f.title && !f.slug) warnings.push(`${domain}/${p.slug}: missing title and slug`);
+          if (f.created && typeof f.created !== 'number') warnings.push(`${domain}/${f.slug}: "created" should be a number`);
+        }
       }
-      if (f.status && !VALID_STATUSES.includes(f.status)) errors.push(`${f.slug}: invalid status "${f.status}"`);
-      if (f.tasks) for (const t of f.tasks) if (!VALID_TASK_STATUSES.includes(t.status)) errors.push(`${f.slug}.tasks.${t.id}: invalid status "${t.status}"`);
-      if (f.created && typeof f.created !== 'number') warnings.push(`${f.slug}: "created" should be a number, got "${f.created}"`);
     }
 
-    console.log('## Validate', '', `Checked ${plans.length} plan files.`, '');
+    console.log('## Validate', '', `Checked ${totalChecked} files across ${domains.length} domains.`, '');
     if (errors.length) { console.log(`### Errors (${errors.length})`); for (const e of errors) console.log(`- ✗ ${e}`); console.log(''); }
     if (warnings.length) { console.log(`### Warnings (${warnings.length})`); for (const w of warnings) console.log(`- ⚠ ${w}`); console.log(''); }
     if (!errors.length && !warnings.length) console.log('All files valid ✅', '');
@@ -594,12 +623,6 @@ const configCmd = defineCommand({
     console.log('PAT saved');
   },
 });
-
-const IDEAS_DIR = join(ROOT, 'ideas');
-const PROCESSES_DIR = join(ROOT, 'processes');
-const PROGRESS_DIR = join(ROOT, 'progress');
-const REFERENCES_DIR = join(ROOT, 'references');
-const ARCHIVE_DIR = join(ROOT, 'archive');
 
 function makeDomainCmd(name: string, description: string, dir: string) {
   const listCmd = defineCommand({

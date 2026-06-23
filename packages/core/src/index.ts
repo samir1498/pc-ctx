@@ -56,7 +56,7 @@ export interface ResolvedRef {
 }
 
 export const VALID_STATUSES = ['active', 'paused', 'done', 'cancelled'];
-export const VALID_TASK_STATUSES = ['pending', 'in-progress', 'done', 'blocked'];
+export const VALID_TASK_STATUSES = ['pending', 'in-progress', 'done', 'blocked', 'cancelled'];
 
 export function parsePlanFile(filepath: string): PlanFile | null {
   let raw: string;
