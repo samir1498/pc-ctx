@@ -16,8 +16,12 @@ export function registerAddTool(server: McpServer, ctx: { plansDir: string }) {
       status: z.enum(['active', 'paused', 'done', 'cancelled']).optional().default('active').describe('Initial status'),
       tldr: z.string().optional().describe('One-line summary'),
       ref: z.string().optional().describe('Reference (research:<slug>, plan:<slug>, url:<url>)'),
+      body: z
+        .string()
+        .optional()
+        .describe('Markdown body (written verbatim, including the # heading). Omit for the default stub.'),
     },
-    async ({ title, category, priority, status, tldr, ref }) => {
+    async ({ title, category, priority, status, tldr, ref, body }) => {
       try {
         const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
         const slug = slugify(title);
@@ -41,7 +45,7 @@ export function registerAddTool(server: McpServer, ctx: { plansDir: string }) {
             acceptance: [],
             references: ref ? [ref] : undefined,
           },
-          body: `# ${title}\n\n## Goal\n\nTODO: define goal\n\n## Scope\n\nTODO: define scope\n`,
+          body: body ?? `# ${title}\n\n## Goal\n\nTODO: define goal\n\n## Scope\n\nTODO: define scope\n`,
           raw: '',
         };
 

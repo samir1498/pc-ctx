@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -144,5 +144,33 @@ describe('CLI integration', () => {
     const { stdout, exitCode } = ctx('research', 'list');
     expect(exitCode).toBe(0);
     expect(stdout).toContain('No research files found');
+  });
+
+  it('plan add --body-file writes the body verbatim', () => {
+    const bodyPath = join(tmpDir, 'custom-body.md');
+    writeFileSync(bodyPath, '# Custom Plan\n\nVerbatim body content.\n', 'utf-8');
+    const { stdout, exitCode } = ctx('plan', 'add', 'Custom-Body-Plan', '--body-file', bodyPath);
+    expect(exitCode).toBe(0);
+    const match = stdout.match(/plans\/(\S+\.md)/);
+    expect(match).toBeTruthy();
+    const onDisk = readFileSync(join(tmpDir, 'plans', match![1]), 'utf-8');
+    expect(onDisk).toContain('Verbatim body content.');
+    expect(onDisk).not.toContain('TODO: define goal');
+  });
+
+  it('plan add --body writes the inline body', () => {
+    const { stdout, exitCode } = ctx('plan', 'add', 'Inline-Body-Plan', '--body', 'Inline-body-text');
+    expect(exitCode).toBe(0);
+    const match = stdout.match(/plans\/(\S+\.md)/);
+    const onDisk = readFileSync(join(tmpDir, 'plans', match![1]), 'utf-8');
+    expect(onDisk).toContain('Inline-body-text');
+  });
+
+  it('plan add falls back to the stub when no body is given', () => {
+    const { stdout, exitCode } = ctx('plan', 'add', 'Stub-Body-Plan');
+    expect(exitCode).toBe(0);
+    const match = stdout.match(/plans\/(\S+\.md)/);
+    const onDisk = readFileSync(join(tmpDir, 'plans', match![1]), 'utf-8');
+    expect(onDisk).toContain('TODO: define goal');
   });
 });

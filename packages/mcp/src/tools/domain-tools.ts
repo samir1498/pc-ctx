@@ -53,8 +53,12 @@ export function registerDomainTools(
       title: z.string().describe('Title'),
       category: z.string().optional().describe(`Category (default: ${domain})`),
       tldr: z.string().optional().describe('One-line summary (default: title)'),
+      body: z
+        .string()
+        .optional()
+        .describe('Markdown body (written verbatim, including the # heading). Omit for the default stub.'),
     },
-    async ({ title, category, tldr }) => {
+    async ({ title, category, tldr, body }) => {
       try {
         const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
         const sl = slugify(title);
@@ -74,7 +78,7 @@ export function registerDomainTools(
             created: Number.parseInt(today),
             tldr: tldr ?? title,
           } as unknown as PlanMeta,
-          body: `# ${title}\n`,
+          body: body ?? `# ${title}\n`,
           raw: '',
         });
         return { content: [{ type: 'text' as const, text: toJson({ ok: true, slug: sl, filename }) }] };

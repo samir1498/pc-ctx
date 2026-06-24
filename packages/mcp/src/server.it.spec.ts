@@ -51,6 +51,7 @@ describe('MCP server integration', () => {
     mkdirSync(join(tmpDir, 'plans'), { recursive: true });
     mkdirSync(join(tmpDir, 'roadmaps'), { recursive: true });
     mkdirSync(join(tmpDir, 'research'), { recursive: true });
+    mkdirSync(join(tmpDir, 'ideas'), { recursive: true });
     writeFileSync(join(tmpDir, 'plans', 'test-plan.md'), SAMPLE_PLAN, 'utf-8');
 
     server = buildServer(join(tmpDir, 'plans'), join(tmpDir, 'roadmaps'), join(tmpDir, 'research'), tmpDir);
@@ -121,5 +122,30 @@ describe('MCP server integration', () => {
     const result = await call('plan_set_status', { slug: 'does-not-exist', status: 'done' });
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain('not found');
+  });
+
+  it('plan_add writes a provided body verbatim', async () => {
+    const result = await call('plan_add', { title: 'Body Plan', body: '# Body Plan\n\nReal content here.\n' });
+    expect(result.isError).toBeFalsy();
+    const { filename } = JSON.parse(textOf(result));
+    const onDisk = readFileSync(join(tmpDir, 'plans', filename), 'utf-8');
+    expect(onDisk).toContain('Real content here.');
+    expect(onDisk).not.toContain('TODO: define goal');
+  });
+
+  it('plan_add falls back to the stub when body is omitted', async () => {
+    const result = await call('plan_add', { title: 'Stub Plan' });
+    expect(result.isError).toBeFalsy();
+    const { filename } = JSON.parse(textOf(result));
+    const onDisk = readFileSync(join(tmpDir, 'plans', filename), 'utf-8');
+    expect(onDisk).toContain('TODO: define goal');
+  });
+
+  it('ideas_add writes a provided body verbatim', async () => {
+    const result = await call('ideas_add', { title: 'Body Idea', body: '# Body Idea\n\nIdea content.\n' });
+    expect(result.isError).toBeFalsy();
+    const { filename } = JSON.parse(textOf(result));
+    const onDisk = readFileSync(join(tmpDir, 'ideas', filename), 'utf-8');
+    expect(onDisk).toContain('Idea content.');
   });
 });
