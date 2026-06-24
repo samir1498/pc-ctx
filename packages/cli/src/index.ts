@@ -633,11 +633,11 @@ const syncCmd = defineCommand({
 const UI_CACHE = join(homedir(), '.pc-ctx', 'web-ui');
 const UI_VERSION_FILE = join(UI_CACHE, '.version');
 
-async function fetchLatestTarball(repo: string) {
+async function fetchLatestTarball(repo: string, pat?: string) {
   const api = `https://api.github.com/repos/${repo}/releases/latest`;
-  const res = await fetch(api, {
-    headers: { Accept: 'application/vnd.github.v3+json', 'User-Agent': 'pc-ctx' },
-  });
+  const headers: Record<string, string> = { Accept: 'application/vnd.github.v3+json', 'User-Agent': 'pc-ctx' };
+  if (pat) headers.Authorization = `Bearer ${pat}`;
+  const res = await fetch(api, { headers });
   if (!res.ok) throw new Error(`GitHub API error: ${res.status}`);
   const release = (await res.json()) as { tag_name: string; assets: { name: string; browser_download_url: string }[] };
   const asset = release.assets.find((a: { name: string }) => a.name === 'web-ui.tar.gz');
@@ -703,10 +703,17 @@ const uiCmd = defineCommand({
   },
   async run({ args }) {
     const repo = args.repo || 'samir1498/pc-ctx-web';
+    let pat = '';
+    try {
+      const cfg = JSON.parse(readFileSync(join(homedir(), '.pc-ctx', 'config.json'), 'utf-8'));
+      pat = cfg.pat || '';
+    } catch {
+      /* ok */
+    }
 
     if (args.update || !getCachedVersion()) {
       console.log(` Fetching latest release from ${repo}...`);
-      const { tag, url } = await fetchLatestTarball(repo);
+      const { tag, url } = await fetchLatestTarball(repo, pat);
       console.log(` Latest: ${tag}`);
       const tmp = join(homedir(), '.pc-ctx', 'web-ui.tar.gz');
       mkdirSync(dirname(tmp), { recursive: true });
@@ -727,13 +734,6 @@ const uiCmd = defineCommand({
 
     if (args.serve) {
       const { startUiServer } = await import('./ui-server.js');
-      let pat = '';
-      try {
-        const cfg = JSON.parse(readFileSync(join(homedir(), '.pc-ctx', 'config.json'), 'utf-8'));
-        pat = cfg.pat || '';
-      } catch {
-        /* ok */
-      }
       startUiServer(Number.parseInt(args.port), UI_CACHE, pat);
       await new Promise(() => {}); // keep alive
     }
