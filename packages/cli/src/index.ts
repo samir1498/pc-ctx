@@ -668,9 +668,17 @@ async function downloadWithProgress(url: string, dest: string) {
     process.stdout.write('\n');
   };
   await pump();
+  if (total && received !== total) {
+    throw new Error(`Download incomplete: got ${received} of ${total} bytes. Run \`ctx ui --update\` to retry.`);
+  }
 }
 
 function extractTarball(tarball: string, dest: string) {
+  try {
+    execSync(`gzip -t "${tarball}"`, { stdio: 'pipe' });
+  } catch {
+    throw new Error('Downloaded tarball is corrupted (gzip integrity check failed). Run `ctx ui --update` to retry.');
+  }
   mkdirSync(dest, { recursive: true });
   execSync(`tar xzf "${tarball}" -C "${dest}"`, { stdio: 'inherit' });
 }
