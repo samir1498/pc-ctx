@@ -8,7 +8,9 @@ import { registerListTool } from './list.js';
 import { registerReferencesTool } from './references.js';
 import { registerResearchListTool } from './research-list.js';
 import { registerResearchShowTool } from './research-show.js';
+import { registerRoadmapAddEntryTool } from './roadmap-add-entry.js';
 import { registerRoadmapListTool } from './roadmap-list.js';
+import { registerRoadmapSetEntryStatusTool } from './roadmap-set-entry-status.js';
 import { registerRoadmapShowTool } from './roadmap-show.js';
 import { registerSetStatusTool } from './set-status.js';
 import { registerSetupTool } from './setup.js';
@@ -33,6 +35,8 @@ export function registerAllTools(
   registerReferencesTool(server, ctx);
   registerRoadmapListTool(server, ctx);
   registerRoadmapShowTool(server, ctx);
+  registerRoadmapSetEntryStatusTool(server, ctx);
+  registerRoadmapAddEntryTool(server, ctx);
   registerResearchListTool(server, ctx);
   registerResearchShowTool(server, ctx);
   registerGraphTool(server, ctx);

@@ -1,5 +1,14 @@
 # Changelog
 
+## @pc-ctx/mcp 0.3.3 — 2026-06-24
+
+### Added
+
+- Roadmap entries are now mutable over MCP. Two new tools mirror the plan-tool conventions:
+  - `roadmap_set_entry_status(slug, ref, status, note?)` — set an existing entry's status; the note is preserved when omitted, or updated when supplied.
+  - `roadmap_add_entry(slug, ref, status?, note?)` — append an entry; errors if the ref already exists.
+- Entry status stays free-form (e.g. `planned` / `next` / `done` / `parked`) — deliberately not constrained to the plan-status enum, since roadmap entries use a richer vocabulary. Previously only `roadmap_list` / `roadmap_show` existed, so an entry's status/note could only be hand-edited.
+
 ## @pc-ctx/core 0.2.1 / @pc-ctx/cli 0.2.2 / @pc-ctx/mcp 0.3.2 — 2026-06-24
 
 ### Fixed
