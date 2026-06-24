@@ -3,6 +3,8 @@ import { execSync, spawnSync } from 'node:child_process';
 import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
+import { pipeline } from 'node:stream/promises';
+import { Readable } from 'node:stream';
 import {
   type PlanMeta,
   SCAFFOLD_FILES,
@@ -652,22 +654,16 @@ async function downloadWithProgress(url: string, dest: string) {
   const writer = createWriteStream(dest);
   let received = 0;
 
-  const reader = res.body?.getReader();
-  if (!reader) throw new Error('No response body');
+  const rs = Readable.fromWeb(res.body as import('stream/web').ReadableStream);
+  rs.on('data', (chunk: Buffer) => {
+    received += chunk.length;
+    const pct = total ? Math.round((received / total) * 100) : 0;
+    process.stdout.write(`\r  Downloading... ${pct}% (${(received / 1024 / 1024).toFixed(1)}MB)`);
+  });
 
-  const pump = async () => {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      received += value.length;
-      const pct = total ? Math.round((received / total) * 100) : 0;
-      process.stdout.write(`\r  Downloading... ${pct}% (${(received / 1024 / 1024).toFixed(1)}MB)`);
-      writer.write(value);
-    }
-    writer.end();
-    process.stdout.write('\n');
-  };
-  await pump();
+  await pipeline(rs, writer);
+  process.stdout.write('\n');
+
   if (total && received !== total) {
     throw new Error(`Download incomplete: got ${received} of ${total} bytes. Run \`ctx ui --update\` to retry.`);
   }
