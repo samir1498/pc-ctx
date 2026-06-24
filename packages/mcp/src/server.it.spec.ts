@@ -32,6 +32,22 @@ references: []
 Body content.
 `;
 
+const SAMPLE_ROADMAP = `---
+title: Test Roadmap
+slug: test-roadmap
+status: active
+category: roadmap
+created: 20260621
+tldr: Integration test roadmap.
+period: 2026-H2
+entries:
+  - ref: test-plan
+    status: planned
+    note: Existing note.
+---
+# Test Roadmap
+`;
+
 interface ToolResult {
   content: { type: string; text: string }[];
   isError?: boolean;
@@ -53,6 +69,7 @@ describe('MCP server integration', () => {
     mkdirSync(join(tmpDir, 'research'), { recursive: true });
     mkdirSync(join(tmpDir, 'ideas'), { recursive: true });
     writeFileSync(join(tmpDir, 'plans', 'test-plan.md'), SAMPLE_PLAN, 'utf-8');
+    writeFileSync(join(tmpDir, 'roadmaps', 'test-roadmap.md'), SAMPLE_ROADMAP, 'utf-8');
 
     server = buildServer(join(tmpDir, 'plans'), join(tmpDir, 'roadmaps'), join(tmpDir, 'research'), tmpDir);
 
@@ -147,5 +164,64 @@ describe('MCP server integration', () => {
     const { filename } = JSON.parse(textOf(result));
     const onDisk = readFileSync(join(tmpDir, 'ideas', filename), 'utf-8');
     expect(onDisk).toContain('Idea content.');
+  });
+
+  it('registers the roadmap entry mutation tools', async () => {
+    const { tools } = await client.listTools();
+    const names = tools.map((t) => t.name);
+    expect(names).toContain('roadmap_set_entry_status');
+    expect(names).toContain('roadmap_add_entry');
+  });
+
+  it('roadmap_set_entry_status updates status and preserves the note when omitted', async () => {
+    const result = await call('roadmap_set_entry_status', { slug: 'test-roadmap', ref: 'test-plan', status: 'done' });
+    expect(result.isError).toBeFalsy();
+    const onDisk = readFileSync(join(tmpDir, 'roadmaps', 'test-roadmap.md'), 'utf-8');
+    expect(onDisk).toContain('status: done');
+    expect(onDisk).toContain('Existing note.');
+  });
+
+  it('roadmap_set_entry_status updates the note when provided', async () => {
+    const result = await call('roadmap_set_entry_status', {
+      slug: 'test-roadmap',
+      ref: 'test-plan',
+      status: 'next',
+      note: 'Updated note.',
+    });
+    expect(result.isError).toBeFalsy();
+    const onDisk = readFileSync(join(tmpDir, 'roadmaps', 'test-roadmap.md'), 'utf-8');
+    expect(onDisk).toContain('status: next');
+    expect(onDisk).toContain('Updated note.');
+    expect(onDisk).not.toContain('Existing note.');
+  });
+
+  it('roadmap_set_entry_status errors on a missing entry ref', async () => {
+    const result = await call('roadmap_set_entry_status', { slug: 'test-roadmap', ref: 'nope', status: 'done' });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('not found');
+  });
+
+  it('roadmap_set_entry_status returns notFound for a missing roadmap', async () => {
+    const result = await call('roadmap_set_entry_status', { slug: 'does-not-exist', ref: 'test-plan', status: 'done' });
+    expect(result.isError).toBe(true);
+  });
+
+  it('roadmap_add_entry appends a new entry', async () => {
+    const result = await call('roadmap_add_entry', {
+      slug: 'test-roadmap',
+      ref: 'another-plan',
+      status: 'planned',
+      note: 'New entry.',
+    });
+    expect(result.isError).toBeFalsy();
+    const onDisk = readFileSync(join(tmpDir, 'roadmaps', 'test-roadmap.md'), 'utf-8');
+    expect(onDisk).toContain('ref: another-plan');
+    expect(onDisk).toContain('New entry.');
+  });
+
+  it('roadmap_add_entry errors on a duplicate ref', async () => {
+    const result = await call('roadmap_add_entry', { slug: 'test-roadmap', ref: 'another-plan' });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('already exists');
   });
 });
