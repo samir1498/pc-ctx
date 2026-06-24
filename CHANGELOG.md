@@ -1,5 +1,11 @@
 # Changelog
 
+## @pc-ctx/cli 0.2.1 / @pc-ctx/mcp 0.3.1 — 2026-06-24
+
+### Fixed
+
+- `plan add` / `roadmap add` / domain `add` (ideas, processes, progress, references, archive, handoffs) and the MCP `plan_add` / `*_add` tools could not set a document body — they hardcoded the `## Goal TODO / ## Scope TODO` (or `# Title`) stub, so every new doc needed a follow-up edit. The MCP tools also silently dropped an unknown `body` argument. Now all surfaces accept an optional body, written verbatim, and fall back to the stub when omitted. CLI: `--body` and `--body-file` (the latter overrides). MCP: a `body` string param.
+
 ## 0.1.0 — 2026-06-21
 
 Initial release.

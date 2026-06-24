@@ -36,6 +36,23 @@ const REFERENCES_DIR = join(ROOT, 'references');
 const ARCHIVE_DIR = join(ROOT, 'archive');
 const HANDOFFS_DIR = join(ROOT, 'handoffs');
 
+// Resolve a markdown body from --body-file (takes precedence) or --body; falls back to the stub when neither is given.
+function resolveBody(args: { body?: string; 'body-file'?: string }, stub: string): string {
+  const bodyFile = args['body-file'];
+  if (bodyFile) return readFileSync(bodyFile, 'utf-8');
+  if (args.body) return args.body;
+  return stub;
+}
+
+const BODY_ARGS = {
+  body: { type: 'string' as const, description: 'Markdown body (written verbatim, incl. # heading)', required: false },
+  'body-file': {
+    type: 'string' as const,
+    description: 'Read the body from a file (overrides --body)',
+    required: false,
+  },
+};
+
 const ALL_DOMAINS: [string, string][] = [
   ['plans', PLANS_DIR],
   ['roadmaps', ROADMAPS_DIR],
@@ -312,6 +329,7 @@ const planAddCmd = defineCommand({
     status: { type: 'string', description: 'Initial status', default: 'active', required: false },
     tldr: { type: 'string', description: 'One-line summary', default: 'TODO: add summary', required: false },
     ref: { type: 'string', description: 'Reference (research:<slug>, plan:<slug>, url:<url>)', required: false },
+    ...BODY_ARGS,
   },
   run({ args }) {
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -335,7 +353,7 @@ const planAddCmd = defineCommand({
       acceptance: [],
       references: args.ref ? [args.ref] : undefined,
     };
-    const body = `# ${args.title}\n\n## Goal\n\nTODO: define goal\n\n## Scope\n\nTODO: define scope`;
+    const body = resolveBody(args, `# ${args.title}\n\n## Goal\n\nTODO: define goal\n\n## Scope\n\nTODO: define scope`);
     writePlanFileAtomic({ slug, filename, dir: PLANS_DIR, frontmatter, body, raw: '' });
     console.log(`ok: created plan "${slug}" at plans/${filename}`);
   },
@@ -786,6 +804,7 @@ function makeDomainCmd(name: string, description: string, dir: string) {
       slug: { type: 'string', description: 'Slug (defaults from title)', required: false },
       category: { type: 'string', description: `Category (default: ${name})`, required: false },
       tldr: { type: 'string', description: 'One-line summary (default: title)', required: false },
+      ...BODY_ARGS,
     },
     run({ args }) {
       const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -805,7 +824,8 @@ function makeDomainCmd(name: string, description: string, dir: string) {
         created: Number.parseInt(today),
         tldr: args.tldr || args.title,
       } as unknown as PlanMeta;
-      writePlanFileAtomic({ slug, filename, dir, frontmatter, body: `# ${args.title}\n`, raw: '' });
+      const body = resolveBody(args, `# ${args.title}\n`);
+      writePlanFileAtomic({ slug, filename, dir, frontmatter, body, raw: '' });
       console.log(`ok: created ${filename}`);
     },
   });
@@ -830,6 +850,7 @@ const roadmapAddCmd = defineCommand({
     period: { type: 'string', description: 'Period (e.g. 2026-H2)', required: false },
     priority: { type: 'string', description: 'Priority 0-100', required: false },
     tldr: { type: 'string', description: 'Summary', default: 'TODO', required: false },
+    ...BODY_ARGS,
   },
   run({ args }) {
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -849,7 +870,8 @@ const roadmapAddCmd = defineCommand({
       priority: args.priority ? Number.parseInt(args.priority) : undefined,
       entries: [],
     } as unknown as PlanMeta;
-    writePlanFileAtomic({ slug, filename, dir: ROADMAPS_DIR, frontmatter, body: `# ${args.title}\n`, raw: '' });
+    const body = resolveBody(args, `# ${args.title}\n`);
+    writePlanFileAtomic({ slug, filename, dir: ROADMAPS_DIR, frontmatter, body, raw: '' });
     console.log(`ok: created roadmap "${slug}"`);
   },
 });
