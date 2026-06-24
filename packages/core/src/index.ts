@@ -105,6 +105,9 @@ export function serializePlanFile(plan: PlanFile): string {
 export function writePlanFileAtomic(plan: PlanFile): void {
   const finalPath = join(plan.dir, plan.filename);
   const tmpPath = `${finalPath}.tmp`;
+  // Ensure the target domain folder exists — a fresh context root may not have every
+  // domain dir (e.g. references/handoffs), and *_add would otherwise throw ENOENT.
+  mkdirSync(plan.dir, { recursive: true });
   writeFileSync(tmpPath, serializePlanFile(plan), 'utf-8');
   renameSync(tmpPath, finalPath);
 }
