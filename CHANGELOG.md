@@ -1,5 +1,11 @@
 # Changelog
 
+## @pc-ctx/core 0.2.1 / @pc-ctx/cli 0.2.2 / @pc-ctx/mcp 0.3.2 — 2026-06-24
+
+### Fixed
+
+- `writePlanFileAtomic` (used by every `add` surface — `plan add`, `roadmap add`, domain `add`, and the MCP `plan_add` / `*_add` tools) threw `ENOENT` when the target domain folder did not exist yet. A fresh context root often lacks some domain dirs (e.g. `references`, `handoffs`), so adding the first doc of that kind failed. It now creates the domain folder (recursive) before writing.
+
 ## @pc-ctx/cli 0.2.1 / @pc-ctx/mcp 0.3.1 — 2026-06-24
 
 ### Fixed

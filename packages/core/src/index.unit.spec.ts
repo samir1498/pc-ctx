@@ -15,6 +15,7 @@ import {
   serializePlanFile,
   slugify,
   statusBadge,
+  writePlanFileAtomic,
 } from './index';
 
 const VALID_PLAN = `---
@@ -235,4 +236,29 @@ beforeAll(() => {
 
 afterAll(() => {
   rmSync(tmpPlanDir, { recursive: true, force: true });
+});
+
+describe('writePlanFileAtomic', () => {
+  it('creates the target dir when it does not exist yet', () => {
+    const dir = join(tmpPlanDir, 'handoffs-does-not-exist-yet');
+    expect(existsSync(dir)).toBe(false);
+    writePlanFileAtomic({
+      slug: 'fresh',
+      filename: '20260624-fresh.md',
+      dir,
+      frontmatter: {
+        title: 'Fresh',
+        slug: 'fresh',
+        status: 'active',
+        category: 'handoffs',
+        created: 20260624,
+        tldr: 'x',
+      },
+      body: '# Fresh\n',
+      raw: '',
+    });
+    const written = parsePlanFile(join(dir, '20260624-fresh.md'));
+    expect(written).not.toBeNull();
+    expect(written!.body).toContain('# Fresh');
+  });
 });
