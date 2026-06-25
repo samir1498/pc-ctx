@@ -37,7 +37,7 @@ The MCP server exposes tools for AI agents. Add to your `opencode.json`:
 | `plan_validate` | Validate frontmatter across all domains against the standardized schema |
 | `plan_set_status` | Update plan status |
 | `plan_task_status` | Update task status |
-| `plan_add` | Create a new plan |
+| `plan_add` | Create a new plan (optional `body` param for markdown body) |
 | `plan_add_task` | Add a task to a plan |
 | `plan_references` | Show references and backlinks |
 | `graph` | Show inter-plan dependency graph |
@@ -65,7 +65,7 @@ Each domain exposes the same three tools:
 |------|-------------|
 | `<domain>_list` | List files in domain |
 | `<domain>_show` | Show file content by slug |
-| `<domain>_add` | Create a new file (writes the standardized frontmatter) |
+| `<domain>_add` | Create a new file (optional `body` param for markdown body) |
 
 See [handoff format](handoff-format.md) for the session-handoff domain.
 

@@ -15,12 +15,14 @@ npx @pc-ctx/cli status
 | `ctx list --status active --category feature --sort priority` | Filtered + sorted |
 | `ctx show <slug>` | Full plan details with tasks, acceptance, backlinks |
 | `ctx validate` | Check all plans for errors |
-| `ctx plan add <title>` | Create a new plan |
+| `ctx plan add <title>` | Create a new plan (`--body`/`--body-file` for custom body) |
 | `ctx plan set-status <slug> <status>` | Change plan status |
 | `ctx plan task-status <slug> <id> <status>` | Update task status |
 | `ctx plan add-task <slug> <id> <desc> <status>` | Add a task |
 | `ctx plan references <slug>` | Show refs + backlinks |
 | `ctx roadmap list / show <slug>` | Roadmap management |
+| `ctx roadmap add <title>` | Create a new roadmap (`--body`/`--body-file` for custom body) |
+| `ctx ideas / processes / progress / references / archive / handoffs add <title>` | Create domain docs (`--body`/`--body-file`) |
 | `ctx research list / show <slug>` | Research file browsing |
 | `ctx graph [slug]` | Inter-plan dependency graph |
 | `ctx setup [dir]` | Scaffold a new context directory |

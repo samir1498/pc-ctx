@@ -38,6 +38,8 @@ ctx validate --domain plans   # validate a specific domain
 
 ```bash
 ctx plan add "Title" --priority 50 --category feature --tldr "Summary"
+ctx plan add "Title" --body "# Title\n\nCustom body"         # pass body inline
+ctx plan add "Title" --body-file ./body.md                   # read body from file
 ctx plan set-status <slug> done
 ctx plan task-status <slug> T1 in-progress
 ctx plan add-task <slug> T2 "Description" --status pending
@@ -50,6 +52,7 @@ ctx plan references <slug>         # show references + backlinks
 ctx roadmap list               # all roadmaps
 ctx roadmap show <slug>        # roadmap details
 ctx roadmap add "Title" --period 2026Q3
+ctx roadmap add "Title" --body "# Title\n\nCustom body"
 ```
 
 ### `ctx research`
@@ -105,7 +108,7 @@ ctx handoffs add "Title" --category <area> --tldr "Summary"
 ```
 
 All domain `add` commands (`ideas`, `processes`, `progress`, `references`, `archive`, `handoffs`)
-accept `--category` and `--tldr` and write the standardized frontmatter.
+accept `--category`, `--tldr`, `--body`, and `--body-file` and write the standardized frontmatter.
 
 ### `ctx graph`
 

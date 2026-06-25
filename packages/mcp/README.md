@@ -10,6 +10,12 @@ MCP server exposing pc-ctx plans as AI agent tools.
 | `plan_show` | Full plan details by slug |
 | `plan_status` | Grouped active/paused/done overview |
 | `plan_validate` | Validate all plan files |
+| `plan_add` | Create a new plan (optional `body` param for markdown body) |
+| `plan_add_task` | Add a task to a plan |
+| `plan_set_status` | Update plan status |
+| `plan_task_status` | Update task status |
+| `plan_references` | Show references + backlinks |
+| `*_add` (ideas, processes, progress, references, archive, handoffs) | Create domain doc (optional `body` param) |
 
 ## Usage
 
