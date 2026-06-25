@@ -1,5 +1,11 @@
 # Changelog
 
+## @pc-ctx/core 0.2.2 / @pc-ctx/cli 0.2.6 / @pc-ctx/mcp 0.3.5 — 2026-06-25
+
+### Fixed
+
+- Republish `@pc-ctx/core` with the `mkdirSync` fix in `writePlanFileAtomic` — `0.2.1` was published before the fix commit was merged, so every `add` command threw `ENOENT` when the target domain folder didn't exist yet.
+
 ## @pc-ctx/mcp 0.3.3 — 2026-06-24
 
 ### Added
