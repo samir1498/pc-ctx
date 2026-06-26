@@ -3,8 +3,8 @@ import { execSync, spawnSync } from 'node:child_process';
 import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
-import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import {
   type PlanMeta,
   SCAFFOLD_FILES,
