@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execSync, spawnSync } from 'node:child_process';
-import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { Readable } from 'node:stream';
@@ -402,6 +402,121 @@ const planRefsCmd = defineCommand({
   },
 });
 
+const planAddAcceptanceCmd = defineCommand({
+  meta: { name: 'add-acceptance', description: 'Add acceptance criteria to a plan' },
+  args: {
+    slug: { type: 'positional', description: 'Plan slug', required: true },
+    description: { type: 'positional', description: 'Acceptance criteria description', required: true },
+  },
+  run({ args }) {
+    const plan = readAllPlans(PLANS_DIR).find((p) => p.slug === args.slug);
+    if (!plan) {
+      console.error(`error: plan "${args.slug}" not found`);
+      return;
+    }
+    if (!plan.frontmatter.acceptance) plan.frontmatter.acceptance = [];
+    if (Array.isArray(plan.frontmatter.acceptance)) {
+      (plan.frontmatter.acceptance as string[]).push(args.description);
+    }
+    writePlanFileAtomic(plan);
+    console.log(`ok: ${args.slug}.acceptance added`);
+  },
+});
+
+const planRemoveTaskCmd = defineCommand({
+  meta: { name: 'remove-task', description: 'Remove a task from a plan' },
+  args: {
+    slug: { type: 'positional', description: 'Plan slug', required: true },
+    id: { type: 'positional', description: 'Task ID', required: true },
+  },
+  run({ args }) {
+    const plan = readAllPlans(PLANS_DIR).find((p) => p.slug === args.slug);
+    if (!plan) {
+      console.error(`error: plan "${args.slug}" not found`);
+      return;
+    }
+    if (!plan.frontmatter.tasks) {
+      console.error(`error: plan "${args.slug}" has no tasks`);
+      return;
+    }
+    const idx = plan.frontmatter.tasks.findIndex((t) => t.id === args.id);
+    if (idx === -1) {
+      console.error(`error: task "${args.id}" not found in "${args.slug}"`);
+      return;
+    }
+    plan.frontmatter.tasks.splice(idx, 1);
+    writePlanFileAtomic(plan);
+    console.log(`ok: ${args.slug}.tasks.${args.id} removed`);
+  },
+});
+
+const planAddRefCmd = defineCommand({
+  meta: { name: 'add-ref', description: 'Add a reference to a plan' },
+  args: {
+    slug: { type: 'positional', description: 'Plan slug', required: true },
+    ref: { type: 'positional', description: 'Reference (plan:<slug>, research:<slug>, url:<url>)', required: true },
+  },
+  run({ args }) {
+    const plan = readAllPlans(PLANS_DIR).find((p) => p.slug === args.slug);
+    if (!plan) {
+      console.error(`error: plan "${args.slug}" not found`);
+      return;
+    }
+    if (!plan.frontmatter.references) plan.frontmatter.references = [];
+    plan.frontmatter.references.push(args.ref);
+    writePlanFileAtomic(plan);
+    console.log(`ok: ${args.slug}.references added "${args.ref}"`);
+  },
+});
+
+const planArchiveCmd = defineCommand({
+  meta: { name: 'archive', description: 'Move a plan to the archive' },
+  args: { slug: { type: 'positional', description: 'Plan slug', required: true } },
+  run({ args }) {
+    const plan = readAllPlans(PLANS_DIR).find((p) => p.slug === args.slug);
+    if (!plan) {
+      console.error(`error: plan "${args.slug}" not found`);
+      return;
+    }
+    const archiveDir = join(PLANS_DIR, 'archived');
+    mkdirSync(archiveDir, { recursive: true });
+    const src = join(plan.dir, plan.filename);
+    const dest = join(archiveDir, plan.filename);
+    renameSync(src, dest);
+    console.log(`ok: ${args.slug} archived to plans/archived/`);
+  },
+});
+
+const planActivateCmd = defineCommand({
+  meta: { name: 'activate', description: 'Set plan status to active (alias for set-status active)' },
+  args: { slug: { type: 'positional', description: 'Plan slug', required: true } },
+  run({ args }) {
+    const plan = readAllPlans(PLANS_DIR).find((p) => p.slug === args.slug);
+    if (!plan) {
+      console.error(`error: plan "${args.slug}" not found`);
+      return;
+    }
+    plan.frontmatter.status = 'active';
+    writePlanFileAtomic(plan);
+    console.log(`ok: ${args.slug} status → active`);
+  },
+});
+
+const planPauseCmd = defineCommand({
+  meta: { name: 'pause', description: 'Set plan status to paused (alias for set-status paused)' },
+  args: { slug: { type: 'positional', description: 'Plan slug', required: true } },
+  run({ args }) {
+    const plan = readAllPlans(PLANS_DIR).find((p) => p.slug === args.slug);
+    if (!plan) {
+      console.error(`error: plan "${args.slug}" not found`);
+      return;
+    }
+    plan.frontmatter.status = 'paused';
+    writePlanFileAtomic(plan);
+    console.log(`ok: ${args.slug} status → paused`);
+  },
+});
+
 const planCmd = defineCommand({
   meta: { name: 'plan', description: 'Manage plans' },
   subCommands: {
@@ -410,6 +525,12 @@ const planCmd = defineCommand({
     add: planAddCmd,
     'add-task': planAddTaskCmd,
     references: planRefsCmd,
+    'add-acceptance': planAddAcceptanceCmd,
+    'remove-task': planRemoveTaskCmd,
+    'add-ref': planAddRefCmd,
+    archive: planArchiveCmd,
+    activate: planActivateCmd,
+    pause: planPauseCmd,
   },
 });
 
