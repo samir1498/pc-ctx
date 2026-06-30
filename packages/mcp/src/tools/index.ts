@@ -1,15 +1,19 @@
 import { join } from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { registerAddAcceptanceTool } from './add-acceptance.js';
+import { registerAddRefTool } from './add-ref.js';
 import { registerAddTaskTool } from './add-task.js';
 import { registerAddTool } from './add.js';
-import { registerAddAcceptanceTool } from './add-acceptance.js';
-import { registerRemoveTaskTool } from './remove-task.js';
-import { registerAddRefTool } from './add-ref.js';
 import { registerArchiveTool } from './archive.js';
 import { registerDomainTools } from './domain-tools.js';
 import { registerGraphTool } from './graph.js';
 import { registerListTool } from './list.js';
+import { registerPlanReconcileTool } from './plan-reconcile.js';
+import { registerPlanStaleTool } from './plan-stale.js';
+import { registerProgressLogTool } from './progress-log.js';
+import { registerProgressReadTool } from './progress-read.js';
 import { registerReferencesTool } from './references.js';
+import { registerRemoveTaskTool } from './remove-task.js';
 import { registerResearchListTool } from './research-list.js';
 import { registerResearchShowTool } from './research-show.js';
 import { registerRoadmapAddEntryTool } from './roadmap-add-entry.js';
@@ -48,13 +52,16 @@ export function registerAllTools(
   registerResearchListTool(server, ctx);
   registerResearchShowTool(server, ctx);
   registerGraphTool(server, ctx);
+  registerPlanReconcileTool(server, ctx);
+  registerPlanStaleTool(server, ctx);
+  registerProgressLogTool(server, ctx);
+  registerProgressReadTool(server, ctx);
   registerSyncTool(server, ctx);
   registerSetupTool(server, ctx);
 
   const domains: [string, string, string][] = [
     ['ideas', join(ctx.root, 'ideas'), 'idea'],
     ['processes', join(ctx.root, 'processes'), 'process'],
-    ['progress', join(ctx.root, 'progress'), 'progress entry'],
     ['references', join(ctx.root, 'references'), 'reference'],
     ['archive', join(ctx.root, 'archive'), 'archived item'],
     ['handoffs', join(ctx.root, 'handoffs'), 'session handoff'],

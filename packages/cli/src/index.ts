@@ -1,6 +1,14 @@
 #!/usr/bin/env node
 import { execSync, spawnSync } from 'node:child_process';
-import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { Readable } from 'node:stream';
@@ -10,14 +18,19 @@ import {
   SCAFFOLD_FILES,
   VALID_STATUSES,
   VALID_TASK_STATUSES,
+  checkStale,
   collectRefs,
   findPlan,
   findResearchFile,
   fmtCell,
   fmtPrio,
   fmtTasks,
+  gitReconcile,
   listResearchFiles,
   parsePlanFile,
+  progressArchive,
+  progressLog,
+  progressRead,
   readAllPlans,
   resolveRef,
   slugify,
@@ -963,7 +976,66 @@ function makeDomainCmd(name: string, description: string, dir: string) {
 
 const ideasCmd = makeDomainCmd('ideas', 'Manage ideas', IDEAS_DIR);
 const processesCmd = makeDomainCmd('processes', 'Manage process docs', PROCESSES_DIR);
-const progressCmd = makeDomainCmd('progress', 'Manage progress logs', PROGRESS_DIR);
+const progressLogCmd = defineCommand({
+  meta: { name: 'log', description: 'Append a timestamped entry to daily.md' },
+  args: {
+    text: { type: 'positional', description: 'Progress text', required: true },
+    tags: { type: 'string', description: 'Comma-separated tags (e.g. backend,postgres)', required: false },
+    now: { type: 'boolean', description: 'Also update now.md', default: false, required: false },
+  },
+  run({ args }) {
+    const tags = args.tags
+      ? args.tags
+          .split(',')
+          .map((t: string) => t.trim())
+          .filter(Boolean)
+      : undefined;
+    const result = progressLog(PROGRESS_DIR, { text: args.text, tags, updateNow: args.now });
+    console.log(`ok: logged "${args.text}"`);
+  },
+});
+
+const progressArchiveCmd = defineCommand({
+  meta: { name: 'archive', description: 'Archive daily.md or now.md when it gets too large (creates fresh file)' },
+  args: {
+    file: {
+      type: 'positional',
+      description: 'File to archive (now.md or daily.md)',
+      required: true,
+    },
+  },
+  run({ args }) {
+    const result = progressArchive(PROGRESS_DIR, args.file);
+    console.log(`ok: archived to ${result.archived}`);
+    console.log(`ok: created fresh ${result.fresh}`);
+  },
+});
+
+const progressReadCmd = defineCommand({
+  meta: { name: 'read', description: 'Read and display a progress file' },
+  args: {
+    file: {
+      type: 'positional',
+      description: 'File to read (now.md or daily.md)',
+      required: true,
+    },
+  },
+  run({ args }) {
+    const result = progressRead(PROGRESS_DIR, args.file);
+    const fmKeys = Object.keys(result.frontmatter);
+    if (fmKeys.length) {
+      console.log('---');
+      for (const [k, v] of Object.entries(result.frontmatter)) console.log(`${k}: ${v}`);
+      console.log('---');
+    }
+    console.log(result.body);
+  },
+});
+
+const progressCmd = defineCommand({
+  meta: { name: 'progress', description: 'Manage progress logs' },
+  subCommands: { log: progressLogCmd, read: progressReadCmd, archive: progressArchiveCmd },
+});
 const referencesCmd = makeDomainCmd('references', 'Manage reference docs', REFERENCES_DIR);
 const archiveCmd = makeDomainCmd('archive', 'Manage archived items', ARCHIVE_DIR);
 const handoffsCmd = makeDomainCmd('handoffs', 'Manage session handoffs', HANDOFFS_DIR);
@@ -1003,6 +1075,56 @@ const roadmapAddCmd = defineCommand({
 
 roadmapCmd.subCommands = { ...roadmapCmd.subCommands, add: roadmapAddCmd };
 
+const staleCmd = defineCommand({
+  meta: { name: 'stale', description: 'Detect stale plans, idle plans, and outdated focus' },
+  run() {
+    const items = checkStale(ROOT);
+    if (!items.length) {
+      console.log('No stale items found.');
+      return;
+    }
+    for (const item of items) {
+      const label = item.slug || item.title || '';
+      console.log(`  [${item.type}] ${label}${label ? ': ' : ''}${item.detail}`);
+    }
+  },
+});
+
+const reconcileCmd = defineCommand({
+  meta: {
+    name: 'reconcile',
+    description:
+      'Reconcile git commit ctx: trailers with plan tasks. Default dry-run; use --apply to modify plan files.',
+  },
+  args: {
+    apply: { type: 'boolean', description: 'Apply changes (update plan files)', default: false, required: false },
+    commits: { type: 'string', description: 'Number of recent commits to scan', default: '50', required: false },
+  },
+  run({ args }) {
+    const result = gitReconcile(ROOT, { apply: args.apply, commits: Number(args.commits) || 50 });
+    const lines: string[] = [];
+
+    if (result.unmatched.length) {
+      lines.push('## Unmatched');
+      for (const u of result.unmatched) lines.push(`  ${u.hash.slice(0, 7)} ${u.trailer} — ${u.reason}`);
+      lines.push('');
+    }
+
+    if (result.matched.length) {
+      lines.push(`## Matched (${result.matched.length})`);
+      for (const m of result.matched) {
+        const ref = m.task ? `${m.slug}/${m.task}` : m.slug;
+        lines.push(`  ${m.hash.slice(0, 7)} ${m.date} ${ref} ${m.action}`);
+      }
+    } else {
+      lines.push('No matched refs found.');
+    }
+
+    console.log(lines.join('\n'));
+    if (args.apply) console.log('ok: applied changes');
+  },
+});
+
 const mainCmd = defineCommand({
   meta: { name: 'ctx', description: 'personal-context CLI — plan, roadmap, and research management' },
   subCommands: {
@@ -1020,6 +1142,8 @@ const mainCmd = defineCommand({
     archive: archiveCmd,
     handoffs: handoffsCmd,
     graph: graphCmd,
+    stale: staleCmd,
+    reconcile: reconcileCmd,
     setup: setupCmd,
     sync: syncCmd,
     ui: uiCmd,
