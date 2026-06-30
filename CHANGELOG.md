@@ -1,5 +1,16 @@
 # Changelog
 
+## @pc-ctx/core 0.4.1 / @pc-ctx/cli 0.4.1 / @pc-ctx/mcp 0.4.1 — 2026-06-30
+
+### Added
+
+- **`ctx reconcile` — roadmap support**: `ctx:` trailers can now reference roadmap slugs. When a slug isn't a plan, `gitReconcile()` falls back to searching `roadmaps/` directory. Apply actions: `close` sets roadmap + all entries to `done`, `start` sets roadmap to `active`, `progress` sets started date.
+
+### Changed
+
+- **`GitCommitRef`** now includes a `type` field (`'plan' | 'roadmap'`) so the display can distinguish plan vs roadmap matches.
+- **Unmatched reason** updated: `"plan not found"` → `"plan or roadmap not found"`.
+
 ## @pc-ctx/core 0.4.0 / @pc-ctx/cli 0.4.0 / @pc-ctx/mcp 0.4.0 — 2026-06-30
 
 ### Added
