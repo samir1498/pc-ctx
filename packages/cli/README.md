@@ -25,6 +25,8 @@ npx @pc-ctx/cli status
 | `ctx ideas / processes / progress / references / archive / handoffs add <title>` | Create domain docs (`--body`/`--body-file`) |
 | `ctx research list / show <slug>` | Research file browsing |
 | `ctx graph [slug]` | Inter-plan dependency graph |
+| `ctx stale` | Detect stale/idle plans and outdated focus |
+| `ctx reconcile [--apply] [--commits N]` | Match git trailera against plans and roadmaps (default dry-run) |
 | `ctx setup [dir]` | Scaffold a new context directory |
 | `ctx sync` | Git pull + push plans |
 

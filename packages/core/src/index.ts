@@ -515,6 +515,7 @@ export interface GitCommitRef {
   slug: string;
   task?: string;
   action: 'start' | 'progress' | 'close';
+  type: 'plan' | 'roadmap';
 }
 
 export interface GitReconcileResult {
@@ -567,19 +568,38 @@ export function gitReconcile(root: string, opts: { commits?: number; apply?: boo
         const content = readFileSync(join(planDir, f), 'utf-8');
         return content.includes(`slug: ${ctxRefItem.slug}`);
       });
-      if (!matchedPlanFile) {
+      let matchedType: 'plan' | 'roadmap' = 'plan';
+      let matchedFilePath: string | undefined;
+
+      if (matchedPlanFile) {
+        matchedFilePath = join(planDir, matchedPlanFile);
+      } else {
+        const roadmapDir = join(root, 'roadmaps');
+        if (existsSync(roadmapDir)) {
+          const roadmapFiles = readdirSync(roadmapDir).filter((f) => f.endsWith('.md'));
+          const matchedRoadmapFile = roadmapFiles.find((f) => {
+            const content = readFileSync(join(roadmapDir, f), 'utf-8');
+            return content.includes(`slug: ${ctxRefItem.slug}`);
+          });
+          if (matchedRoadmapFile) {
+            matchedFilePath = join(roadmapDir, matchedRoadmapFile);
+            matchedType = 'roadmap';
+          }
+        }
+      }
+
+      if (!matchedFilePath) {
         unmatched.push({
           hash,
           subject,
           trailer: `${ctxRefItem.slug}${ctxRefItem.task ? `/${ctxRefItem.task}` : ''}`,
-          reason: 'plan not found',
+          reason: 'plan or roadmap not found',
         });
         continue;
       }
-      const planFilePath = join(planDir, matchedPlanFile);
 
-      if (ctxRefItem.task) {
-        const plan = readProgressFile(planFilePath);
+      if (matchedType === 'plan' && ctxRefItem.task) {
+        const plan = readProgressFile(matchedFilePath);
         if (!plan) {
           unmatched.push({
             hash,
@@ -605,6 +625,7 @@ export function gitReconcile(root: string, opts: { commits?: number; apply?: boo
         slug: ctxRefItem.slug,
         task: ctxRefItem.task,
         action: ctxRefItem.action,
+        type: matchedType,
       });
     }
   }
@@ -619,6 +640,50 @@ export function gitReconcile(root: string, opts: { commits?: number; apply?: boo
     }
 
     for (const [slugVal, gitRefs] of Object.entries(bySlug)) {
+      const gitRefType = gitRefs[0]?.type || 'plan';
+
+      if (gitRefType === 'roadmap') {
+        const roadmapDir = join(root, 'roadmaps');
+        if (!existsSync(roadmapDir)) continue;
+        const roadmapFilePath = readdirSync(roadmapDir).find(
+          (f) => f.endsWith('.md') && readFileSync(join(roadmapDir, f), 'utf-8').includes(`slug: ${slugVal}`),
+        );
+        if (!roadmapFilePath) continue;
+        const roadmapPath = join(roadmapDir, roadmapFilePath);
+        const roadmapData = readProgressFile(roadmapPath);
+        if (!roadmapData) continue;
+
+        const fm = roadmapData.frontmatter;
+        const entries = (fm.entries as { ref: string; status?: string; note?: string }[] | undefined) || [];
+
+        for (const gitRef of gitRefs) {
+          if (gitRef.action === 'close') {
+            fm.status = 'done';
+            fm.completed = gitRef.date;
+            for (const entry of entries) {
+              if (entry.status !== 'done') {
+                entry.status = 'done';
+              }
+            }
+          } else if (gitRef.action === 'start') {
+            if (fm.status !== 'active') {
+              fm.status = 'active';
+            }
+          } else if (gitRef.action === 'progress') {
+            if (!fm.started) {
+              fm.started = gitRef.date;
+            }
+            if (fm.status !== 'active') {
+              fm.status = 'active';
+            }
+          }
+        }
+
+        fm.entries = entries;
+        writeProgressFile(roadmapPath, fm, roadmapData.body);
+        continue;
+      }
+
       const plansDir = join(root, 'plans');
       const planFilePath = readdirSync(plansDir).find(
         (f) => f.endsWith('.md') && readFileSync(join(plansDir, f), 'utf-8').includes(`slug: ${slugVal}`),
