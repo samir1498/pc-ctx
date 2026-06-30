@@ -1,4 +1,14 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import yaml from 'js-yaml';
 
@@ -141,13 +151,19 @@ export function domainDirs(root: string): [string, string][] {
  * standardized schema (REQUIRED_DOC_FIELDS, a valid status, and well-formed task
  * statuses). Single source of truth shared by the CLI `validate` command and the MCP
  * `plan_validate` tool. Files without YAML frontmatter are skipped (not counted).
+ *
+ * The `progress` domain uses a different, minimal schema (type, updated) and is
+ * excluded from required-field validation.
  */
+export const SKIP_VALIDATION_DOMAINS = new Set(['progress']);
+
 export function validateDomains(domains: [string, string][]): ValidateResult {
   const errors: string[] = [];
   const warnings: string[] = [];
   let checked = 0;
 
   for (const [domain, dir] of domains) {
+    if (SKIP_VALIDATION_DOMAINS.has(domain)) continue;
     const docs = readAllPlans(dir);
     checked += docs.length;
     for (const p of docs) {
@@ -295,6 +311,379 @@ export function slugify(title: string): string {
     .slice(0, 60);
 }
 
+/**
+ * Read a progress file (now.md, daily.md, or weekly) with its minimal frontmatter.
+ * Returns { frontmatter, body } or null if the file doesn't exist.
+ */
+export function readProgressFile(filepath: string): { frontmatter: Record<string, unknown>; body: string } | null {
+  if (!existsSync(filepath)) return null;
+  const raw = readFileSync(filepath, 'utf-8');
+  const match = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  if (!match || !match[1]) return { frontmatter: {}, body: raw.trim() };
+  try {
+    return { frontmatter: yaml.load(match[1]) as Record<string, unknown>, body: (match[2] || '').trim() };
+  } catch {
+    return { frontmatter: {}, body: raw.trim() };
+  }
+}
+
+export function writeProgressFile(filepath: string, frontmatter: Record<string, unknown>, body: string): void {
+  mkdirSync(dirname(filepath), { recursive: true });
+  const yamlStr = yaml.dump(frontmatter, { lineWidth: 120, quotingType: "'", forceQuotes: false, noCompatMode: true });
+  writeFileSync(filepath, `---\n${yamlStr}---\n${body}\n`, 'utf-8');
+}
+
+export interface ProgressLogOptions {
+  text: string;
+  tags?: string[];
+  updateNow?: boolean;
+}
+
+/**
+ * Log a progress entry: appends a timestamped bullet to daily.md and optionally updates now.md.
+ *
+ * - `daily.md` is created with frontmatter (type, title, updated, tags) if it doesn't exist.
+ * - Each entry is appended as `## YYYY-MM-DD HH:MM UTC` followed by `- {text}`.
+ * - If `tags` are provided, they're appended after the text: `- {text} (@tag1, @tag2)`.
+ * - If `updateNow` is true, now.md's `updated` frontmatter field is set to today.
+ */
+export function progressLog(progressDir: string, opts: ProgressLogOptions): { dailyEntry: string } {
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 10);
+  const timestamp = `${now.toISOString().replace('T', ' ').slice(0, 16).replace(/-/g, '-')} UTC`;
+  const tagsSuffix = opts.tags?.length ? ` (${opts.tags.map((t) => `@${t}`).join(', ')})` : '';
+  const bullet = `- ${opts.text}${tagsSuffix}`;
+
+  // --- daily.md ---
+  const dailyPath = join(progressDir, 'daily.md');
+  const dailyFm: Record<string, unknown> = {
+    type: 'daily',
+  };
+  const dailyEntry = `\n## ${timestamp}\n\n${bullet}\n`;
+  const existing = readProgressFile(dailyPath);
+  if (existing) {
+    const newBody = existing.body.trimEnd() + dailyEntry;
+    writeProgressFile(dailyPath, existing.frontmatter, newBody);
+  } else {
+    writeProgressFile(dailyPath, dailyFm, `# ${dateStr}\n${dailyEntry}`);
+  }
+
+  // --- now.md (optional update) ---
+  if (opts.updateNow) {
+    const nowPath = join(progressDir, 'now.md');
+    const nowFm: Record<string, unknown> = {
+      type: 'now',
+      updated: dateStr,
+    };
+    const nowBody = `## Active\n- ${opts.text}\n\n## Done recently\n\n## Pending\n\n## Not started\n`;
+    if (!existsSync(nowPath)) {
+      writeProgressFile(nowPath, nowFm, nowBody);
+    } else {
+      const nowExisting = readProgressFile(nowPath);
+      if (nowExisting) {
+        nowExisting.frontmatter.updated = dateStr;
+        writeProgressFile(nowPath, nowExisting.frontmatter, nowExisting.body);
+      }
+    }
+  }
+
+  return { dailyEntry: bullet };
+}
+
+/**
+ * Archive a progress file when it grows too large.
+ * Moves the file to `archive/<date>-<filename>` and creates a fresh one with the same frontmatter.
+ * Returns { archived: string, fresh: string } paths, or throws if the file doesn't exist.
+ */
+export function progressArchive(progressDir: string, filename: string): { archived: string; fresh: string } {
+  const filepath = join(progressDir, filename);
+  if (!existsSync(filepath)) throw new Error(`File not found: ${filename}`);
+
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const archiveDir = join(progressDir, '..', 'archive');
+  mkdirSync(archiveDir, { recursive: true });
+
+  const archiveName = `${dateStr}-${filename}`;
+  const archivePath = join(archiveDir, archiveName);
+  renameSync(filepath, archivePath);
+
+  // Create fresh file with the same frontmatter shape but empty body
+  const freshFm: Record<string, unknown> = {};
+  if (filename === 'now.md') {
+    freshFm.type = 'now';
+    freshFm.updated = dateStr;
+    writeProgressFile(filepath, freshFm, '## Active\n\n## Done recently\n\n## Pending\n\n## Not started\n');
+  } else if (filename === 'daily.md') {
+    freshFm.type = 'daily';
+    freshFm.updated = dateStr;
+    writeProgressFile(filepath, freshFm, `# ${dateStr}\n`);
+  } else {
+    throw new Error(`Archiving not supported for: ${filename}. Use now.md or daily.md.`);
+  }
+
+  return { archived: archivePath, fresh: filepath };
+}
+
+export interface ProgressReadResult {
+  frontmatter: Record<string, unknown>;
+  body: string;
+}
+
+export function progressRead(progressDir: string, filename: string): ProgressReadResult {
+  const filepath = join(progressDir, filename);
+  const result = readProgressFile(filepath);
+  if (!result) throw new Error(`File not found: ${filename}`);
+  return result;
+}
+
+export interface StaleEntry {
+  type: 'plan-done-inactive' | 'plan-idle' | 'focus-stale';
+  slug?: string;
+  title?: string;
+  detail: string;
+}
+
+export function checkStale(root: string): StaleEntry[] {
+  const stale: StaleEntry[] = [];
+  const plansDir = join(root, 'plans');
+  const progressDir = join(root, 'progress');
+  const now = new Date();
+
+  // Heuristic 1: all tasks done but plan active
+  if (existsSync(plansDir)) {
+    for (const file of readdirSync(plansDir)) {
+      if (!file.endsWith('.md')) continue;
+      const result = readProgressFile(join(plansDir, file));
+      if (!result) continue;
+      const tasks = result.frontmatter.tasks as { id: string; status: string }[] | undefined;
+      const status = result.frontmatter.status as string | undefined;
+      if (status === 'active' && tasks?.length && tasks.every((t) => t.status === 'done')) {
+        stale.push({
+          type: 'plan-done-inactive',
+          slug: result.frontmatter.slug as string | undefined,
+          title: result.frontmatter.title as string | undefined,
+          detail: 'All tasks done but status is active',
+        });
+      }
+    }
+
+    // Heuristic 2: active plan untouched >14d
+    const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+    for (const file of readdirSync(plansDir)) {
+      if (!file.endsWith('.md')) continue;
+      const result = readProgressFile(join(plansDir, file));
+      if (!result) continue;
+      const status = result.frontmatter.status as string | undefined;
+      if (status !== 'active') continue;
+      const mtime = statSync(join(plansDir, file)).mtime;
+      if (mtime < fourteenDaysAgo) {
+        stale.push({
+          type: 'plan-idle',
+          slug: result.frontmatter.slug as string | undefined,
+          title: result.frontmatter.title as string | undefined,
+          detail: `Last modified ${Math.round((now.getTime() - mtime.getTime()) / 86400000)}d ago`,
+        });
+      }
+    }
+  }
+
+  // Heuristic 3: now.md not updated today
+  const nowPath = join(progressDir, 'now.md');
+  if (existsSync(nowPath)) {
+    const nowFile = readProgressFile(nowPath);
+    if (nowFile) {
+      const updatedRaw = nowFile.frontmatter.updated;
+      const updated = updatedRaw instanceof Date ? updatedRaw.toISOString().slice(0, 10) : String(updatedRaw || '');
+      const today = now.toISOString().slice(0, 10);
+      if (updated !== today) {
+        stale.push({
+          type: 'focus-stale',
+          detail: `now.md updated ${updated || 'never'} (today is ${today})`,
+        });
+      }
+    }
+  }
+
+  return stale;
+}
+
+export interface GitCommitRef {
+  hash: string;
+  date: string;
+  timestamp: number;
+  subject: string;
+  slug: string;
+  task?: string;
+  action: 'start' | 'progress' | 'close';
+}
+
+export interface GitReconcileResult {
+  matched: GitCommitRef[];
+  unmatched: { hash: string; subject: string; trailer: string; reason: string }[];
+}
+
+function parseCtxTrailers(body: string): { slug: string; task?: string; action: 'start' | 'progress' | 'close' }[] {
+  const results: { slug: string; task?: string; action: 'start' | 'progress' | 'close' }[] = [];
+  const lines = body.split('\n');
+  for (const line of lines) {
+    const match = line.match(/^ctx:\s*([a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)?)\s+(start|progress|close)\s*$/);
+    if (match) {
+      const ref = match[1]!;
+      const action = match[2] as 'start' | 'progress' | 'close';
+      const slashIdx = ref.indexOf('/');
+      if (slashIdx === -1) {
+        results.push({ slug: ref, action });
+      } else {
+        results.push({ slug: ref.slice(0, slashIdx), task: ref.slice(slashIdx + 1), action });
+      }
+    }
+  }
+  return results;
+}
+
+export function gitReconcile(root: string, opts: { commits?: number; apply?: boolean } = {}): GitReconcileResult {
+  const n = opts.commits ?? 50;
+  const matched: GitCommitRef[] = [];
+  const unmatched: { hash: string; subject: string; trailer: string; reason: string }[] = [];
+
+  const logOutput = execSync(`git log --format="%H|||%ct|||%s|||%b" -${n}`, { cwd: root, encoding: 'utf-8' });
+  const commits = logOutput.trim().split('\n|||\n');
+
+  for (const block of commits) {
+    const parts = block.split('|||');
+    if (parts.length < 3) continue;
+    const hash = parts[0]!;
+    const ts = parts[1]!;
+    const subject = parts[2] || '';
+    const body = parts.slice(3).join('|||');
+    const timestamp = Number.parseInt(ts, 10);
+    const date = new Date(timestamp * 1000).toISOString().slice(0, 10);
+
+    const ctxRefs = parseCtxTrailers(body);
+    for (const ctxRefItem of ctxRefs) {
+      const planDir = join(root, 'plans');
+      const planFiles = readdirSync(planDir).filter((f) => f.endsWith('.md'));
+      const matchedPlanFile = planFiles.find((f) => {
+        const content = readFileSync(join(planDir, f), 'utf-8');
+        return content.includes(`slug: ${ctxRefItem.slug}`);
+      });
+      if (!matchedPlanFile) {
+        unmatched.push({
+          hash,
+          subject,
+          trailer: `${ctxRefItem.slug}${ctxRefItem.task ? `/${ctxRefItem.task}` : ''}`,
+          reason: 'plan not found',
+        });
+        continue;
+      }
+      const planFilePath = join(planDir, matchedPlanFile);
+
+      if (ctxRefItem.task) {
+        const plan = readProgressFile(planFilePath);
+        if (!plan) {
+          unmatched.push({
+            hash,
+            subject,
+            trailer: `${ctxRefItem.slug}/${ctxRefItem.task}`,
+            reason: 'plan file unreadable',
+          });
+          continue;
+        }
+        const tasks = plan.frontmatter.tasks as { id: string; status: string }[] | undefined;
+        const taskStr: string = ctxRefItem.task;
+        if (!tasks?.find((t) => t.id === taskStr)) {
+          unmatched.push({ hash, subject, trailer: `${ctxRefItem.slug}/${ctxRefItem.task}`, reason: 'task not found' });
+          continue;
+        }
+      }
+
+      matched.push({
+        hash,
+        date,
+        timestamp,
+        subject,
+        slug: ctxRefItem.slug,
+        task: ctxRefItem.task,
+        action: ctxRefItem.action,
+      });
+    }
+  }
+
+  // Apply if requested
+  if (opts.apply && matched.length) {
+    // Group matched by slug
+    const bySlug: Record<string, GitCommitRef[]> = {};
+    for (const m of matched) {
+      if (!bySlug[m.slug]) bySlug[m.slug] = [];
+      bySlug[m.slug]!.push(m);
+    }
+
+    for (const [slugVal, gitRefs] of Object.entries(bySlug)) {
+      const plansDir = join(root, 'plans');
+      const planFilePath = readdirSync(plansDir).find(
+        (f) => f.endsWith('.md') && readFileSync(join(plansDir, f), 'utf-8').includes(`slug: ${slugVal}`),
+      );
+      if (!planFilePath) continue;
+      const planPath = join(plansDir, planFilePath);
+      const planData = readProgressFile(planPath);
+      if (!planData) continue;
+
+      const fm = planData.frontmatter;
+      const tasksList =
+        (fm.tasks as { id: string; status: string; completed?: string; started?: string }[] | undefined) || [];
+
+      for (const gitRef of gitRefs) {
+        if (gitRef.action === 'close') {
+          if (gitRef.task) {
+            const task = tasksList.find((t) => t.id === gitRef.task);
+            if (task && task.status !== 'done') {
+              task.status = 'done';
+              task.completed = gitRef.date;
+            }
+          } else {
+            for (const task of tasksList) {
+              if (task.status !== 'done') {
+                task.status = 'done';
+                task.completed = gitRef.date;
+              }
+            }
+            fm.status = 'done';
+            fm.completed = gitRef.date;
+          }
+        } else if (gitRef.action === 'start') {
+          if (gitRef.task) {
+            const task = tasksList.find((t) => t.id === gitRef.task);
+            if (task && !task.started) {
+              task.started = gitRef.date;
+              if (task.status === 'pending') task.status = 'in-progress';
+            }
+          } else if (!fm.started) {
+            fm.started = gitRef.date;
+          }
+        } else if (gitRef.action === 'progress') {
+          if (gitRef.task) {
+            const task = tasksList.find((t) => t.id === gitRef.task);
+            if (task && task.status === 'pending') {
+              task.status = 'in-progress';
+              if (!task.started) task.started = gitRef.date;
+            }
+          }
+        }
+      }
+
+      if (fm.status === 'active' && tasksList.length && tasksList.every((t) => t.status === 'done') && !fm.completed) {
+        fm.completed = gitRefs[gitRefs.length - 1]!.date;
+        fm.status = 'done';
+      }
+
+      fm.tasks = tasksList;
+      writeProgressFile(planPath, fm, planData.body);
+    }
+  }
+
+  return { matched, unmatched };
+}
+
 export const SCAFFOLD_FILES: Record<string, string> = {
   '.gitignore': `node_modules/
 package-lock.json
@@ -323,21 +712,39 @@ Fall back to \`ctx <subcommand>\` if MCP tools are unavailable.
 - \`ctx show <slug>\` — plan details
 - \`ctx plan add <title>\` — new plan
 `,
-  'progress/now.md': `# Now
-
-## Today's Focus
-- (what you're actively working on — 3-5 lines max)
+  'progress/now.md': `---
+type: now
+updated: YYYY-MM-DD
+---
 
 ## Active
 Run \`bun run ctx status\` for full overview.
 Run \`bun run ctx show <slug>\` for plan details.
+
+## Done recently
+
+## Pending
+
+## Not started
 `,
-  'progress/daily.md': `# YYYY-MM-DD
+  'progress/daily.md': `---
+type: daily
+---
+
+# YYYY-MM-DD
 
 ## YYYY-MM-DD HH:MM UTC
 - (intraday log entries)
 `,
-  'progress/YYYY-Www.md': `# Week WW (YYYY-MM-DD → YYYY-MM-DD)
+  'progress/YYYY-Www.md': `---
+type: weekly
+title: Week WW (YYYY-MM-DD → YYYY-MM-DD)
+period:
+  start: YYYY-MM-DD
+  end: YYYY-MM-DD
+updated: YYYY-MM-DD
+tags: []
+---
 
 ## Day
 - (weekly summary entries)

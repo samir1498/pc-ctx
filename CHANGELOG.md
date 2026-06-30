@@ -1,5 +1,29 @@
 # Changelog
 
+## @pc-ctx/core 0.3.0 / @pc-ctx/cli 0.3.0 / @pc-ctx/mcp 0.3.0 — 2026-06-30
+
+### Added
+
+- **`ctx progress read <file>`** — new CLI subcommand that reads a progress file (now.md or daily.md) and displays its frontmatter + body.
+- **`progress_read` MCP tool** — read progress files programmatically.
+- **`ctx stale`** — new CLI subcommand that detects stale plans (all tasks done but status active), idle plans (>14d untouched), and outdated focus (now.md not updated today). Heuristics:
+  - *Heuristic 1*: Active plans where all tasks are `done` — suggests closing the plan
+  - *Heuristic 2*: Active plans with mtime >14 days ago — suggests review
+  - *Heuristic 3*: now.md `updated` field doesn't match today — suggests focus refresh
+- **`plan_stale` MCP tool** — identical detection callable by agents; returns JSON list of stale entries.
+- **`ctx reconcile [--apply] [--commits N]`** — new CLI subcommand that scans Git log for `ctx:` trailers in commit bodies, cross-references against plan files, and reports matched/unmatched refs. Default is dry-run; `--apply` updates plan frontmatter (task status, completion dates, plan status). Parses `ctx: <slug>[/<task>] <action>` format where action is `start`, `progress`, or `close`.
+- **`plan_reconcile` MCP tool** — identical reconciliation callable by agents. Params: `apply` (boolean, default false), `commits` (number, default 50).
+- **`@pc-ctx/core` exports**: `progressRead()`, `checkStale()`, `gitReconcile()`, `parseCtxTrailers()`, `GitReconcileResult`, `GitCommitRef`, `StaleEntry`, `ProgressReadResult`.
+- **`SKIP_VALIDATION_DOMAINS`** — progress files use a minimal schema (`type`, `updated`) and are excluded from required-field validation.
+
+### Changed
+
+- **Frontmatter trim**: now.md scaffold frontmatter reduced to `type: now` + `updated: YYYY-MM-DD` (dropped `title`, `tags`). daily.md scaffold frontmatter reduced to `type: daily` only (dropped `title`, `updated`, `tags`). `progressLog` and `progressArchive` code paths updated to match.
+- **Generic CRUD dropped for progress**: `list`/`show`/`add` commands removed from `ctx progress` and MCP domain-tools registration. Only bespoke tools remain: `log`, `read`, `archive`.
+- **Archive threshold**: 100 lines (was 300).
+- **Session rituals**: SKILL.md updated with `ctx stale` + `ctx reconcile --dry` as session start ritual, and `ctx reconcile --apply` + `ctx stale` + `ctx progress log --now` as session end ritual.
+- **Git commit convention**: `ctx:` trailers documented in `.skills/git-commit-convention/SKILL.md` with full format spec, slug reference list, and session rituals.
+
 ## @pc-ctx/core 0.2.2 / @pc-ctx/cli 0.2.6 / @pc-ctx/mcp 0.3.5 — 2026-06-25
 
 ### Fixed
