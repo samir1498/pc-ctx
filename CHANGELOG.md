@@ -1,6 +1,6 @@
 # Changelog
 
-## @pc-ctx/core 0.3.0 / @pc-ctx/cli 0.3.0 / @pc-ctx/mcp 0.3.0 — 2026-06-30
+## @pc-ctx/core 0.4.0 / @pc-ctx/cli 0.4.0 / @pc-ctx/mcp 0.4.0 — 2026-06-30
 
 ### Added
 
