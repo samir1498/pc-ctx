@@ -3,6 +3,6 @@ export default {
   project: ['packages/*/src/**/*.ts'],
   ignore: ['packages/*/src/**/*.spec.ts'],
   ignoreExportsUsedInFile: true,
-  ignoreBinaries: ['fallow', 'dot'],
+  ignoreBinaries: ['fallow', 'dot', 'gh'],
   ignoreDependencies: ['@types/node', '@vitest/coverage-v8', 'typescript', '@pc-ctx/core'],
 };

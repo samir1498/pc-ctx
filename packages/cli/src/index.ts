@@ -1,21 +1,12 @@
 #!/usr/bin/env node
 import { execSync, spawnSync } from 'node:child_process';
-import {
-  createWriteStream,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  renameSync,
-  writeFileSync,
-} from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import {
   type PlanMeta,
-  SCAFFOLD_FILES,
   VALID_STATUSES,
   VALID_TASK_STATUSES,
   checkStale,
@@ -33,6 +24,7 @@ import {
   progressRead,
   readAllPlans,
   resolveRef,
+  scaffoldContext,
   slugify,
   statusBadge,
   validateDomains,
@@ -677,64 +669,71 @@ const graphCmd = defineCommand({
 });
 
 const setupCmd = defineCommand({
-  meta: { name: 'setup', description: 'Scaffold a new personal-context in the current directory' },
+  meta: {
+    name: 'setup',
+    description: 'Scaffold (or top up) a context directory. Idempotent; git-inits and makes a scaffold commit.',
+  },
   args: {
-    dir: { type: 'string', description: 'Target directory', default: '.', required: false },
-    remote: { type: 'string', description: 'Git remote URL', required: false },
+    name: {
+      type: 'string',
+      description: 'Context directory name',
+      default: 'personal-context',
+      required: false,
+    },
+    dir: { type: 'string', description: 'Parent directory', default: '.', required: false },
+    remote: { type: 'string', description: 'Git remote URL to add (origin)', required: false },
+    git: {
+      type: 'boolean',
+      description: 'git init + scaffold commit (use --no-git to skip)',
+      default: true,
+      required: false,
+    },
   },
   async run({ args }) {
     const base = args.dir.startsWith('/') ? args.dir : join(process.cwd(), args.dir);
-    const target = join(base, 'personal-context');
+    const target = join(base, args.name);
+    const preexisting = existsSync(target);
 
-    if (existsSync(target)) {
-      if (existsSync(join(target, '.git'))) {
-        console.error(`error: "${target}" already exists and is a git repo`);
-        return;
-      }
-      const files = readdirSync(target);
-      if (files.length > 0) {
-        console.error(`error: "${target}" already exists and is not empty`);
-        return;
+    // Idempotent: top up any missing dirs/files instead of erroring on a
+    // partial/existing context.
+    const { created, existing } = scaffoldContext(target, { name: args.name });
+
+    if (created.length === 0) {
+      console.log(`\nContext at ${target} is already complete — nothing to add.`);
+    } else if (preexisting && existing.length > 0) {
+      console.log(`\nTopped up context at ${target}:`);
+      console.log(`  added (${created.length}): ${created.join(', ')}`);
+      console.log(`  already present (${existing.length}): ${existing.join(', ')}`);
+    } else {
+      console.log(`\nDone! Context created at ${target}`);
+    }
+
+    // git init + scaffold commit (never push).
+    const isGitRepo = existsSync(join(target, '.git'));
+    if (args.git && !isGitRepo) {
+      const init = spawnSync('git', ['init', '-q'], { cwd: target });
+      if (init.status === 0) {
+        spawnSync('git', ['add', '-A'], { cwd: target });
+        spawnSync('git', ['commit', '-q', '-m', 'initial: scaffold context'], { cwd: target });
+        console.log('  git: initialized + scaffold commit');
+      } else {
+        console.log('  git: not available — skipped init (install git or use --no-git)');
       }
     }
 
-    const dirs = [
-      '',
-      'bin',
-      'plans',
-      'roadmaps',
-      'progress',
-      'ideas',
-      'processes',
-      'references',
-      'archive',
-      'handoffs',
-    ];
-    for (const d of dirs) mkdirSync(join(target, d), { recursive: true });
-
-    for (const [filepath, content] of Object.entries(SCAFFOLD_FILES)) {
-      writeFileSync(join(target, filepath), content, 'utf-8');
-    }
-
-    const pkg = {
-      name: 'personal-context',
-      private: true,
-      type: 'module',
-      scripts: { ctx: 'bun run bin/ctx.ts' },
-      dependencies: { '@pc-ctx/cli': '^0.1.0' },
-    };
-    writeFileSync(join(target, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`, 'utf-8');
-
-    const proxyBin = `#!/usr/bin/env node\nimport('@pc-ctx/cli').catch(() => {\n  console.error('Install @pc-ctx/cli first: pnpm add @pc-ctx/cli');\n  process.exit(1);\n});\n`;
-    writeFileSync(join(target, 'bin', 'ctx.ts'), proxyBin, 'utf-8');
-    console.log(`\nDone! Context created at ${target}`);
+    // Remote guidance: never auto-push.
     console.log('\nNext steps:');
     console.log(`  cd ${target}`);
     console.log('  bun i && bun run ctx status');
-    if (args.remote)
-      console.log(
-        `  git init && git add -A && git commit -m "initial: scaffold" && git remote add origin ${args.remote} && git push -u origin main`,
-      );
+    if (args.remote) {
+      console.log(`  git remote add origin ${args.remote} && git push -u origin main`);
+    } else if (spawnSync('gh', ['--version'], { stdio: 'ignore' }).status === 0) {
+      console.log('  gh detected — create a private remote with:');
+      console.log(`    gh repo create ${args.name} --private --source . --remote origin --push`);
+    } else {
+      console.log('  add a remote (GitHub / GitLab / Gitea / self-hosted), then push:');
+      console.log('    git remote add origin <url> && git push -u origin main');
+    }
   },
 });
 
@@ -1145,6 +1144,7 @@ const mainCmd = defineCommand({
     stale: staleCmd,
     reconcile: reconcileCmd,
     setup: setupCmd,
+    init: setupCmd,
     sync: syncCmd,
     ui: uiCmd,
     config: configCmd,

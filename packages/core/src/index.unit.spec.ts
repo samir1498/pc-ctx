@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,6 +12,7 @@ import {
   listResearchFiles,
   parsePlanFile,
   readAllPlans,
+  scaffoldContext,
   serializePlanFile,
   slugify,
   statusBadge,
@@ -260,5 +261,49 @@ describe('writePlanFileAtomic', () => {
     const written = parsePlanFile(join(dir, '20260624-fresh.md'));
     expect(written).not.toBeNull();
     expect(written!.body).toContain('# Fresh');
+  });
+});
+
+describe('scaffoldContext', () => {
+  let dir: string;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'pc-ctx-scaffold-'));
+  });
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('creates a full context on a fresh dir and reports it all as created', () => {
+    const target = join(dir, 'ctx-a');
+    const res = scaffoldContext(target);
+    expect(res.existing).toEqual([]);
+    expect(res.created).toContain('plans/');
+    expect(res.created).toContain('package.json');
+    expect(existsSync(join(target, 'plans'))).toBe(true);
+    expect(existsSync(join(target, 'package.json'))).toBe(true);
+  });
+
+  it('uses the given name for package.json', () => {
+    const target = join(dir, 'ctx-named');
+    scaffoldContext(target, { name: 'team-context' });
+    const pkg = JSON.parse(readFileSync(join(target, 'package.json'), 'utf-8'));
+    expect(pkg.name).toBe('team-context');
+  });
+
+  it('is idempotent: a re-run adds nothing and reports everything as existing', () => {
+    const target = join(dir, 'ctx-b');
+    scaffoldContext(target);
+    const res2 = scaffoldContext(target);
+    expect(res2.created).toEqual([]);
+    expect(res2.existing).toContain('plans/');
+  });
+
+  it('tops up only the missing pieces on a partial context', () => {
+    const target = join(dir, 'ctx-partial');
+    mkdirSync(join(target, 'plans'), { recursive: true });
+    const res = scaffoldContext(target);
+    expect(res.existing).toContain('plans/');
+    expect(res.created).toContain('roadmaps/');
+    expect(res.created).not.toContain('plans/');
   });
 });

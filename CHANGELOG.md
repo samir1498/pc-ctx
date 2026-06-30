@@ -1,5 +1,17 @@
 # Changelog
 
+## @pc-ctx/core 0.5.0 / @pc-ctx/cli 0.5.0 / @pc-ctx/mcp 0.5.0 — 2026-06-30
+
+### Added
+
+- **`ctx setup` bootstrap UX overhaul** (+ `ctx init` alias):
+  - Configurable context name via `--name` (no more hardcoded `personal-context`).
+  - **Idempotent**: re-running tops up any missing dirs/files instead of erroring, and prints what was added vs already present.
+  - **Auto git init + scaffold commit** after creation (never auto-pushes; `--no-git` to skip).
+  - **Remote guidance**: with `--remote` prints the `git remote add`/`push` line; otherwise detects `gh` and suggests `gh repo create --private`, or falls back to generic instructions (GitHub/GitLab/Gitea/self-hosted).
+  - Shared scaffolding extracted to `scaffoldContext()` in `@pc-ctx/core`.
+- **MCP `setup` tool**: now idempotent (tops up via the shared core scaffold) and returns the added/existing diff. Accepts an optional `name`. git init + remote setup are CLI-only (the MCP can't run git) — the tool points users at `ctx setup` / `npx @pc-ctx/cli setup`.
+
 ## @pc-ctx/core 0.4.1 / @pc-ctx/cli 0.4.1 / @pc-ctx/mcp 0.4.1 — 2026-06-30
 
 ### Added

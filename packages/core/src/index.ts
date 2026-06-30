@@ -890,3 +890,73 @@ references: []
 - Anything the next session needs answered.
 `,
 };
+
+// Canonical context subdirectories ('' = the root itself).
+export const CONTEXT_SUBDIRS = [
+  '',
+  'bin',
+  'plans',
+  'roadmaps',
+  'progress',
+  'ideas',
+  'processes',
+  'references',
+  'archive',
+  'handoffs',
+] as const;
+
+export interface ScaffoldResult {
+  created: string[];
+  existing: string[];
+}
+
+// Idempotent scaffold: creates any missing dirs/files under `target`, leaving
+// existing ones untouched, and reports what was added vs already present. Safe
+// to re-run to top up a partial/older context. Does NOT touch git.
+export function scaffoldContext(target: string, opts: { name?: string } = {}): ScaffoldResult {
+  const name = opts.name ?? (basename(target) || 'personal-context');
+  const created: string[] = [];
+  const existing: string[] = [];
+  const note = (label: string, isNew: boolean) => (isNew ? created : existing).push(label);
+
+  for (const d of CONTEXT_SUBDIRS) {
+    const p = join(target, d);
+    const isNew = !existsSync(p);
+    if (isNew) mkdirSync(p, { recursive: true });
+    note(d === '' ? '.' : `${d}/`, isNew);
+  }
+
+  for (const [filepath, content] of Object.entries(SCAFFOLD_FILES)) {
+    const p = join(target, filepath);
+    const isNew = !existsSync(p);
+    if (isNew) {
+      mkdirSync(dirname(p), { recursive: true });
+      writeFileSync(p, content, 'utf-8');
+    }
+    note(filepath, isNew);
+  }
+
+  const pkgPath = join(target, 'package.json');
+  const pkgIsNew = !existsSync(pkgPath);
+  if (pkgIsNew) {
+    const pkg = {
+      name,
+      private: true,
+      type: 'module',
+      scripts: { ctx: 'bun run bin/ctx.ts' },
+      dependencies: { '@pc-ctx/cli': '^0.1.0' },
+    };
+    writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`, 'utf-8');
+  }
+  note('package.json', pkgIsNew);
+
+  const binPath = join(target, 'bin', 'ctx.ts');
+  const binIsNew = !existsSync(binPath);
+  if (binIsNew) {
+    const proxyBin = `#!/usr/bin/env node\nimport('@pc-ctx/cli').catch(() => {\n  console.error('Install @pc-ctx/cli first: pnpm add @pc-ctx/cli');\n  process.exit(1);\n});\n`;
+    writeFileSync(binPath, proxyBin, 'utf-8');
+  }
+  note('bin/ctx.ts', binIsNew);
+
+  return { created, existing };
+}
