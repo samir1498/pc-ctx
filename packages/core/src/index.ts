@@ -944,7 +944,7 @@ export function scaffoldContext(target: string, opts: { name?: string } = {}): S
       private: true,
       type: 'module',
       scripts: { ctx: 'bun run bin/ctx.ts' },
-      dependencies: { '@pc-ctx/cli': '^0.1.0' },
+      dependencies: { '@pc-ctx/cli': '^0.5.0' },
     };
     writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`, 'utf-8');
   }

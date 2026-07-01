@@ -2,7 +2,7 @@
 import { execSync, spawnSync } from 'node:child_process';
 import { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join, relative } from 'node:path';
+import { dirname, isAbsolute, join, relative } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import {
@@ -690,7 +690,7 @@ const setupCmd = defineCommand({
     },
   },
   async run({ args }) {
-    const base = args.dir.startsWith('/') ? args.dir : join(process.cwd(), args.dir);
+    const base = isAbsolute(args.dir) ? args.dir : join(process.cwd(), args.dir);
     const target = join(base, args.name);
     const preexisting = existsSync(target);
 
@@ -714,8 +714,12 @@ const setupCmd = defineCommand({
       const init = spawnSync('git', ['init', '-q'], { cwd: target });
       if (init.status === 0) {
         spawnSync('git', ['add', '-A'], { cwd: target });
-        spawnSync('git', ['commit', '-q', '-m', 'initial: scaffold context'], { cwd: target });
-        console.log('  git: initialized + scaffold commit');
+        const commit = spawnSync('git', ['commit', '-q', '-m', 'initial: scaffold context'], { cwd: target });
+        if (commit.status === 0) {
+          console.log('  git: initialized + scaffold commit');
+        } else {
+          console.error('  git: init succeeded but commit failed');
+        }
       } else {
         console.log('  git: not available — skipped init (install git or use --no-git)');
       }
@@ -725,14 +729,16 @@ const setupCmd = defineCommand({
     console.log('\nNext steps:');
     console.log(`  cd ${target}`);
     console.log('  bun i && bun run ctx status');
+    const branch =
+      spawnSync('git', ['symbolic-ref', '--short', 'HEAD'], { cwd: target, encoding: 'utf-8' }).stdout.trim() || 'main';
     if (args.remote) {
-      console.log(`  git remote add origin ${args.remote} && git push -u origin main`);
+      console.log(`  git remote add origin ${args.remote} && git push -u origin ${branch}`);
     } else if (spawnSync('gh', ['--version'], { stdio: 'ignore' }).status === 0) {
       console.log('  gh detected — create a private remote with:');
       console.log(`    gh repo create ${args.name} --private --source . --remote origin --push`);
     } else {
       console.log('  add a remote (GitHub / GitLab / Gitea / self-hosted), then push:');
-      console.log('    git remote add origin <url> && git push -u origin main');
+      console.log(`    git remote add origin <url> && git push -u origin ${branch}`);
     }
   },
 });
