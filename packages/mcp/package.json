@@ -1,6 +1,6 @@
 {
   "name": "@pc-ctx/mcp",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "MCP server exposing pc-ctx plans as AI agent tools — plan_list, plan_show, plan_status, plan_validate",
   "type": "module",
   "bin": {
@@ -14,7 +14,11 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
