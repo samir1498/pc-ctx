@@ -1,5 +1,16 @@
 # Changelog
 
+## @pc-ctx/core 0.6.0 / @pc-ctx/cli 0.6.0 / @pc-ctx/mcp 0.6.0 — 2026-07-01
+
+### Fixed
+
+- **Cross-platform path handling**: `ctx setup` uses `path.isAbsolute()` instead of `startsWith('/')` so Windows absolute paths work correctly.
+- **Git commit verification**: `ctx setup` now checks `git commit` status before printing success — previously reported success even on commit failure.
+- **Dynamic branch detection**: push guidance uses `git symbolic-ref --short HEAD` instead of hardcoding `main`.
+- **Scaffold dep version**: `scaffoldContext()` writes `@pc-ctx/cli: ^0.5.0` (was `^0.1.0`).
+- **MCP setup absolute paths**: `dir` parameter preserves absolute paths instead of always joining with `cwd()`.
+- **MCP setup guidance**: points users to the actual scaffolded directory instead of suggesting a nested `ctx setup`.
+
 ## @pc-ctx/core 0.5.0 / @pc-ctx/cli 0.5.0 / @pc-ctx/mcp 0.5.0 — 2026-06-30
 
 ### Added
