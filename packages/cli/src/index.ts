@@ -842,17 +842,30 @@ const uiCmd = defineCommand({
     },
     update: { type: 'boolean', description: 'Force re-download', default: false, required: false },
     port: { type: 'string', description: 'Local server port', default: '3333', required: false },
-    repo: { type: 'string', description: 'GitHub repo (owner/name)', default: 'samir1498/pc-ctx-web', required: false },
+    repo: {
+      type: 'string',
+      description: 'UI release repo (owner/name)',
+      default: 'samir1498/pc-ctx-web',
+      required: false,
+    },
+    'content-repo': { type: 'string', description: 'Context repo to browse (owner/name)', required: false },
+    'content-branch': { type: 'string', description: 'Context repo branch', required: false },
   },
   async run({ args }) {
     const repo = args.repo || 'samir1498/pc-ctx-web';
     let pat = '';
+    let cfgContentRepo = '';
+    let cfgContentBranch = '';
     try {
       const cfg = JSON.parse(readFileSync(join(homedir(), '.pc-ctx', 'config.json'), 'utf-8'));
       pat = cfg.pat || '';
+      cfgContentRepo = cfg.contentRepo || '';
+      cfgContentBranch = cfg.contentBranch || '';
     } catch {
       /* ok */
     }
+    const contentRepo = args['content-repo'] || cfgContentRepo || 'Observeone1/observeone-context';
+    const contentBranch = args['content-branch'] || cfgContentBranch || 'main';
 
     if (args.update || !getCachedVersion()) {
       console.log(` Fetching latest release from ${repo}...`);
@@ -877,7 +890,7 @@ const uiCmd = defineCommand({
 
     if (args.serve) {
       const { startUiServer } = await import('./ui-server.js');
-      startUiServer(Number.parseInt(args.port), UI_CACHE, pat);
+      startUiServer(Number.parseInt(args.port), UI_CACHE, pat, contentRepo, contentBranch);
       await new Promise(() => {}); // keep alive
     }
   },
