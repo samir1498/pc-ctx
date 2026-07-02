@@ -1,5 +1,12 @@
 # Changelog
 
+## @pc-ctx/cli 0.8.0 — 2026-07-02
+
+### Added
+
+- **`ctx ui` local filesystem serving**: `--root` flag serves context files directly from local disk — no GitHub PAT required. Configurable via `ctx config --root <path>`.
+- **`ctx config --root`**: persists the local context root to `~/.pc-ctx/config.json` so `ctx ui --serve` just works.
+
 ## @pc-ctx/cli 0.7.0 — 2026-07-02
 
 ### Added
