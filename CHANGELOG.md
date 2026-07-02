@@ -1,5 +1,14 @@
 # Changelog
 
+## @pc-ctx/cli 0.7.0 — 2026-07-02
+
+### Added
+
+- **`ctx ui` configurable content repo**: `--content-repo` and `--content-branch` flags, or `contentRepo`/`contentBranch` in `~/.pc-ctx/config.json`. Defaults to `Observeone1/observeone-context` @ `main`.
+- **GraphQL Tree query**: single GitHub GraphQL request replaces the old N+1 REST fetch (was 1 list call + 1 per file). Faster, fewer round-trips.
+- **Full folder list**: `handoffs` and `archive` added to browsable folders.
+- **Error handling**: upstream failure → 502 with message; absent folder → `[]`.
+
 ## @pc-ctx/core 0.6.0 / @pc-ctx/cli 0.6.0 / @pc-ctx/mcp 0.6.0 — 2026-07-01
 
 ### Fixed
