@@ -2,7 +2,7 @@
 import { execSync, spawnSync } from 'node:child_process';
 import { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, isAbsolute, join, relative } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import {
@@ -850,22 +850,35 @@ const uiCmd = defineCommand({
     },
     'content-repo': { type: 'string', description: 'Context repo to browse (owner/name)', required: false },
     'content-branch': { type: 'string', description: 'Context repo branch', required: false },
+    root: {
+      type: 'string',
+      description: 'Serve a local context checkout instead of GitHub (path); no PAT needed',
+      required: false,
+    },
   },
   async run({ args }) {
     const repo = args.repo || 'samir1498/pc-ctx-web';
     let pat = '';
     let cfgContentRepo = '';
     let cfgContentBranch = '';
+    let cfgContentRoot = '';
     try {
       const cfg = JSON.parse(readFileSync(join(homedir(), '.pc-ctx', 'config.json'), 'utf-8'));
       pat = cfg.pat || '';
       cfgContentRepo = cfg.contentRepo || '';
       cfgContentBranch = cfg.contentBranch || '';
+      cfgContentRoot = cfg.contentRoot || '';
     } catch {
       /* ok */
     }
     const contentRepo = args['content-repo'] || cfgContentRepo || 'Observeone1/observeone-context';
     const contentBranch = args['content-branch'] || cfgContentBranch || 'main';
+    // Prefer a local checkout when one is given and exists — instant, offline, no PAT.
+    const rootArg = args.root || cfgContentRoot || process.env.PC_CTX_ROOT || '';
+    const localRoot = rootArg && existsSync(rootArg) ? resolve(rootArg) : '';
+    if (rootArg && !localRoot) {
+      console.log(`  ⚠ --root "${rootArg}" not found; falling back to GitHub (${contentRepo})`);
+    }
 
     if (args.update || !getCachedVersion()) {
       console.log(` Fetching latest release from ${repo}...`);
@@ -890,36 +903,44 @@ const uiCmd = defineCommand({
 
     if (args.serve) {
       const { startUiServer } = await import('./ui-server.js');
-      startUiServer(Number.parseInt(args.port), UI_CACHE, pat, contentRepo, contentBranch);
+      startUiServer(Number.parseInt(args.port), UI_CACHE, pat, contentRepo, contentBranch, localRoot);
       await new Promise(() => {}); // keep alive
     }
   },
 });
 
 const configCmd = defineCommand({
-  meta: { name: 'config', description: 'Set GitHub PAT for local web UI' },
+  meta: { name: 'config', description: 'Configure the local web UI (PAT, local root, content repo)' },
   args: {
-    pat: { type: 'string', description: 'GitHub Personal Access Token', required: false },
+    pat: { type: 'string', description: 'GitHub Personal Access Token (for GitHub-backed mode)', required: false },
+    root: { type: 'string', description: 'Local context checkout to serve (no PAT needed)', required: false },
+    'content-repo': { type: 'string', description: 'GitHub context repo (owner/name)', required: false },
     show: { type: 'boolean', description: 'Show current config', default: false, required: false },
   },
   run({ args }) {
     const configPath = join(homedir(), '.pc-ctx', 'config.json');
+    let cfg: Record<string, unknown> = {};
+    try {
+      cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
+    } catch {
+      /* no config yet */
+    }
     if (args.show) {
-      try {
-        const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
-        console.log('PAT:', cfg.pat ? '(set)' : '(not set)');
-      } catch {
-        console.log('PAT: (not set)');
-      }
+      console.log('PAT:', cfg.pat ? '(set)' : '(not set)');
+      console.log('root:', cfg.contentRoot || '(not set)');
+      console.log('contentRepo:', cfg.contentRepo || '(default: Observeone1/observeone-context)');
       return;
     }
-    if (!args.pat) {
-      console.error('Usage: ctx config --pat <token>');
+    if (!args.pat && !args.root && !args['content-repo']) {
+      console.error('Usage: ctx config [--pat <token>] [--root <path>] [--content-repo <owner/name>]');
       return;
     }
+    if (args.pat) cfg.pat = args.pat;
+    if (args.root) cfg.contentRoot = resolve(args.root);
+    if (args['content-repo']) cfg.contentRepo = args['content-repo'];
     mkdirSync(dirname(configPath), { recursive: true });
-    writeFileSync(configPath, `${JSON.stringify({ pat: args.pat }, null, 2)}\n`, { mode: 0o600 });
-    console.log('PAT saved');
+    writeFileSync(configPath, `${JSON.stringify(cfg, null, 2)}\n`, { mode: 0o600 });
+    console.log('Config saved');
   },
 });
 
