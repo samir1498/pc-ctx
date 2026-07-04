@@ -1,5 +1,14 @@
 # Changelog
 
+## @pc-ctx/core 0.7.0 / @pc-ctx/cli 0.9.0 / @pc-ctx/mcp 0.7.0 — 2026-07-04
+
+### Added
+
+- **`completed_at` tracking**: `plan_set_status` (MCP) and `ctx plan set-status` (CLI) now write `completed_at: YYYY-MM-DD` to frontmatter when a plan's status changes to `done` or `cancelled`.
+- **`backfill-completed-at.ts`**: walks git log of the plans directory to find when existing done/cancelled plans were completed, and backfills the `completed_at` field. Falls back to file mtime if git history isn't available.
+- **Date-range filtering on `plan_list`**: accepts optional `since` and `until` ISO date string parameters. Filters plans where `completed_at` falls within the range. Returns `completed_at` in the response when present.
+- **Date-range filtering on `archive_list`**: same `since`/`until` parameters. Falls back to filename prefix date pattern (`YYYY-MM-DD-*.md`) for archived items without `completed_at` in frontmatter.
+
 ## @pc-ctx/cli 0.8.0 — 2026-07-02
 
 ### Added
