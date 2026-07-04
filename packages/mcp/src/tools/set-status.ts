@@ -16,6 +16,9 @@ export function registerSetStatusTool(server: McpServer, ctx: { plansDir: string
         const plan = readAllPlans(ctx.plansDir).find((p) => p.slug === slug);
         if (!plan) return notFound('plan', slug);
         plan.frontmatter.status = status;
+        if (status === 'done' || status === 'cancelled') {
+          plan.frontmatter.completed_at = new Date().toISOString().slice(0, 10);
+        }
         writePlanFileAtomic(plan);
         return {
           content: [
