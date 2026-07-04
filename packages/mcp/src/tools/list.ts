@@ -10,12 +10,16 @@ export function registerListTool(server: McpServer, ctx: { plansDir: string }) {
     {
       status: z.enum(['active', 'paused', 'done', 'cancelled']).optional().describe('Filter by status'),
       category: z.string().optional().describe('Filter by category'),
+      since: z.string().optional().describe('Filter by completed_at >= YYYY-MM-DD'),
+      until: z.string().optional().describe('Filter by completed_at <= YYYY-MM-DD'),
     },
-    async ({ status, category }) => {
+    async ({ status, category, since, until }) => {
       try {
         let plans = readAllPlans(ctx.plansDir);
         if (status) plans = plans.filter((p) => p.frontmatter.status === status);
         if (category) plans = plans.filter((p) => p.frontmatter.category === category);
+        if (since) plans = plans.filter((p) => (p.frontmatter.completed_at as string) >= since);
+        if (until) plans = plans.filter((p) => (p.frontmatter.completed_at as string) <= until);
 
         const rows = plans.map((p) => ({
           slug: p.slug,
@@ -24,6 +28,7 @@ export function registerListTool(server: McpServer, ctx: { plansDir: string }) {
           category: p.frontmatter.category,
           priority: p.frontmatter.priority ?? null,
           tasks: fmtTasks(p.frontmatter.tasks),
+          ...(p.frontmatter.completed_at ? { completed_at: p.frontmatter.completed_at } : {}),
         }));
 
         const { items, total, note } = truncateList(rows);

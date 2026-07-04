@@ -261,6 +261,9 @@ const planSetStatusCmd = defineCommand({
       return;
     }
     plan.frontmatter.status = args.status;
+    if (args.status === 'done' || args.status === 'cancelled') {
+      plan.frontmatter.completed_at = new Date().toISOString().slice(0, 10);
+    }
     writePlanFileAtomic(plan);
     console.log(`ok: ${args.slug} status → ${args.status}`);
   },
