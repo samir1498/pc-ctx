@@ -167,6 +167,7 @@ export function registerAllTools(
     ['processes', join(ctx.root, 'processes'), 'process'],
     ['references', join(ctx.root, 'references'), 'reference'],
     ['handoffs', join(ctx.root, 'handoffs'), 'session handoff'],
+    ['repos', join(ctx.root, 'repos'), 'repo'],
   ];
   for (const [domain, dir, label] of genericDomains) {
     registerDomainTools(server, { root: ctx.root }, domain, dir, label);

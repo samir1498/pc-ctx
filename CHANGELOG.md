@@ -1,5 +1,17 @@
 # Changelog
 
+## @pc-ctx/core 0.8.2 / @pc-ctx/cli 0.9.2 / @pc-ctx/mcp 0.7.2 — 2026-07-05
+
+### Added
+
+- **`repos` domain in CLI**: `ctx repos list`, `ctx repos show`, `ctx repos sync` — list/show/sync repo metadata from the filesystem. `sync` validates paths, detects git remotes and branches, and updates frontmatter.
+- **`repos` domain in MCP**: `repos_list`, `repos_show`, `repos_add` tools for AI agent access to repo metadata.
+- **AGENTS.md auto-wiring**: `repos/` reference added to workspace AGENTS.md so agents know to check repo files before starting work.
+
+### Fixed
+
+- **`@` YAML values causing parse failure**: `@` is a reserved YAML indicator. Values starting with `@` (e.g. `@pc-ctx/core`) in sequences caused `js-yaml` to throw "bad indentation". Fixed by setting `forceQuotes: true` in `serializePlanFile` (was `false`, inconsistent with `writeProgressFile`).
+
 ## @pc-ctx/core 0.8.1 — 2026-07-05
 
 ### Fixed

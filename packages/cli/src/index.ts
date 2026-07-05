@@ -42,6 +42,7 @@ const PROGRESS_DIR = join(ROOT, 'progress');
 const REFERENCES_DIR = join(ROOT, 'references');
 const ARCHIVE_DIR = join(ROOT, 'archive');
 const HANDOFFS_DIR = join(ROOT, 'handoffs');
+const REPOS_DIR = join(ROOT, 'repos');
 
 // Resolve a markdown body from --body-file (takes precedence) or --body; falls back to the stub when neither is given.
 function resolveBody(args: { body?: string; 'body-file'?: string }, stub: string): string {
@@ -69,6 +70,7 @@ const ALL_DOMAINS: [string, string][] = [
   ['references', REFERENCES_DIR],
   ['archive', ARCHIVE_DIR],
   ['handoffs', HANDOFFS_DIR],
+  ['repos', REPOS_DIR],
 ];
 
 const listCmd = defineCommand({
@@ -1082,6 +1084,61 @@ const referencesCmd = makeDomainCmd('references', 'Manage reference docs', REFER
 const archiveCmd = makeDomainCmd('archive', 'Manage archived items', ARCHIVE_DIR);
 const handoffsCmd = makeDomainCmd('handoffs', 'Manage session handoffs', HANDOFFS_DIR);
 
+const reposSyncCmd = defineCommand({
+  meta: { name: 'sync', description: 'Sync repo metadata from filesystem: validate paths, detect remotes, update stale fields' },
+  run() {
+    const repos = readAllPlans(REPOS_DIR);
+    let updated = 0;
+    let unchanged = 0;
+    let errors = 0;
+    for (const repo of repos) {
+      const fm = repo.frontmatter;
+      const filepath = join(REPOS_DIR, repo.filename);
+      const repoPath = fm.path as string | undefined;
+      const changed: string[] = [];
+
+      if (repoPath) {
+        if (!existsSync(repoPath)) {
+          errors++;
+          console.log(`  [warn] ${fm.slug}: path "${repoPath}" not found`);
+          continue;
+        }
+
+        // Detect git remote
+        try {
+          const remote = execSync(`git -C "${repoPath}" remote get-url origin 2>/dev/null`, { encoding: 'utf-8' }).trim();
+          if (remote && remote !== fm.remote) {
+            changed.push(`remote: "${fm.remote || '—'}" → "${remote}"`);
+            fm.remote = remote;
+          }
+        } catch { /* not a git repo */ }
+
+        // Detect current branch
+        try {
+          const branch = execSync(`git -C "${repoPath}" rev-parse --abbrev-ref HEAD 2>/dev/null`, { encoding: 'utf-8' }).trim();
+          if (branch) fm.branch = branch;
+        } catch { /* not a git repo */ }
+      }
+
+      if (changed.length) {
+        updated++;
+        writePlanFileAtomic({ slug: repo.slug, filename: repo.filename, dir: REPOS_DIR, frontmatter: fm as PlanMeta, body: repo.body, raw: '' });
+        for (const line of changed) console.log(`  ${fm.slug}: ${line}`);
+      } else {
+        unchanged++;
+      }
+    }
+
+    console.log(`ok: ${updated} updated, ${unchanged} unchanged${errors ? `, ${errors} errors` : ''}`);
+  },
+});
+
+const reposBaseCmd = makeDomainCmd('repos', 'Manage project repos', REPOS_DIR);
+const reposCmd = defineCommand({
+  meta: { name: 'repos', description: 'Manage project repos' },
+  subCommands: { ...reposBaseCmd.subCommands, sync: reposSyncCmd },
+});
+
 const roadmapAddCmd = defineCommand({
   meta: { name: 'add', description: 'Create a new roadmap' },
   args: {
@@ -1191,6 +1248,7 @@ const mainCmd = defineCommand({
     sync: syncCmd,
     ui: uiCmd,
     config: configCmd,
+    repos: reposCmd,
   },
 });
 
