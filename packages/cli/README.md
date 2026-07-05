@@ -26,7 +26,7 @@ npx @pc-ctx/cli status
 | `ctx research list / show <slug>` | Research file browsing |
 | `ctx graph [slug]` | Inter-plan dependency graph |
 | `ctx stale` | Detect stale/idle plans and outdated focus |
-| `ctx reconcile [--apply] [--commits N]` | Match git trailera against plans and roadmaps (default dry-run) |
+| `ctx reconcile [--apply] [--commits N]` | Match git `ctx:` trailers against plans and roadmaps. Supports `start`, `progress`, `close`, and `repo:` actions (default dry-run) |
 | `ctx setup [dir]` | Scaffold a new context directory |
 | `ctx sync` | Git pull + push plans |
 
