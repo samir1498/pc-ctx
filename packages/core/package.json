@@ -1,6 +1,6 @@
 {
   "name": "@pc-ctx/core",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Core types, YAML I/O, and utilities for pc-ctx plan management",
   "type": "module",
   "main": "dist/index.js",

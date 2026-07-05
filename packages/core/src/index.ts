@@ -572,7 +572,7 @@ export function gitReconcile(root: string, opts: { commits?: number; apply?: boo
       const planFiles = readdirSync(planDir).filter((f) => f.endsWith('.md'));
       const matchedPlanFile = planFiles.find((f) => {
         const content = readFileSync(join(planDir, f), 'utf-8');
-        return content.includes(`slug: ${ctxRefItem.slug}`);
+        return new RegExp(`slug:\\s*'?${ctxRefItem.slug}'?`).test(content);
       });
       let matchedType: 'plan' | 'roadmap' = 'plan';
       let matchedFilePath: string | undefined;
@@ -585,7 +585,7 @@ export function gitReconcile(root: string, opts: { commits?: number; apply?: boo
           const roadmapFiles = readdirSync(roadmapDir).filter((f) => f.endsWith('.md'));
           const matchedRoadmapFile = roadmapFiles.find((f) => {
             const content = readFileSync(join(roadmapDir, f), 'utf-8');
-            return content.includes(`slug: ${ctxRefItem.slug}`);
+            return new RegExp(`slug:\\s*'?${ctxRefItem.slug}'?`).test(content);
           });
           if (matchedRoadmapFile) {
             matchedFilePath = join(roadmapDir, matchedRoadmapFile);
