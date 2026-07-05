@@ -1,5 +1,11 @@
 # Changelog
 
+## @pc-ctx/core 0.8.1 — 2026-07-05
+
+### Fixed
+
+- **`gitReconcile` slug matching with quoted YAML**: `forceQuotes: true` caused `yaml.dump` to quote all values (e.g. `slug: 'my-plan'`). The reconcile slug lookup used `content.includes()` which looked for `slug: <value>` without quotes, so every plan was reported as "not found". Replaced with a regex that handles optional quotes.
+
 ## @pc-ctx/core 0.8.0 / @pc-ctx/cli 0.9.1 / @pc-ctx/mcp 0.7.1 — 2026-07-05
 
 ### Added
