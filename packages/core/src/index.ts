@@ -329,7 +329,7 @@ export function readProgressFile(filepath: string): { frontmatter: Record<string
 
 export function writeProgressFile(filepath: string, frontmatter: Record<string, unknown>, body: string): void {
   mkdirSync(dirname(filepath), { recursive: true });
-  const yamlStr = yaml.dump(frontmatter, { lineWidth: 120, quotingType: "'", forceQuotes: false, noCompatMode: true });
+  const yamlStr = yaml.dump(frontmatter, { lineWidth: 120, quotingType: "'", forceQuotes: true, noCompatMode: true });
   writeFileSync(filepath, `---\n${yamlStr}---\n${body}\n`, 'utf-8');
 }
 
@@ -514,7 +514,8 @@ export interface GitCommitRef {
   subject: string;
   slug: string;
   task?: string;
-  action: 'start' | 'progress' | 'close';
+  action: 'start' | 'progress' | 'close' | 'repo';
+  repo?: string;
   type: 'plan' | 'roadmap';
 }
 
@@ -523,19 +524,24 @@ export interface GitReconcileResult {
   unmatched: { hash: string; subject: string; trailer: string; reason: string }[];
 }
 
-function parseCtxTrailers(body: string): { slug: string; task?: string; action: 'start' | 'progress' | 'close' }[] {
-  const results: { slug: string; task?: string; action: 'start' | 'progress' | 'close' }[] = [];
+function parseCtxTrailers(body: string): { slug: string; task?: string; action: 'start' | 'progress' | 'close' | 'repo'; repo?: string }[] {
+  const results: { slug: string; task?: string; action: 'start' | 'progress' | 'close' | 'repo'; repo?: string }[] = [];
   const lines = body.split('\n');
   for (const line of lines) {
-    const match = line.match(/^ctx:\s*([a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)?)\s+(start|progress|close)\s*$/);
+    const match = line.match(/^ctx:\s*([a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)?)\s+(start|progress|close|repo:[a-zA-Z0-9_-]+)\s*$/);
     if (match) {
       const ref = match[1]!;
-      const action = match[2] as 'start' | 'progress' | 'close';
+      const rawAction = match[2]!;
       const slashIdx = ref.indexOf('/');
-      if (slashIdx === -1) {
-        results.push({ slug: ref, action });
+      if (rawAction.startsWith('repo:')) {
+        results.push({ slug: ref.slice(0, slashIdx === -1 ? ref.length : slashIdx), task: slashIdx === -1 ? undefined : ref.slice(slashIdx + 1), action: 'repo', repo: rawAction.slice(5) });
       } else {
-        results.push({ slug: ref.slice(0, slashIdx), task: ref.slice(slashIdx + 1), action });
+        const action = rawAction as 'start' | 'progress' | 'close';
+        if (slashIdx === -1) {
+          results.push({ slug: ref, action });
+        } else {
+          results.push({ slug: ref.slice(0, slashIdx), task: ref.slice(slashIdx + 1), action });
+        }
       }
     }
   }
@@ -598,6 +604,22 @@ export function gitReconcile(root: string, opts: { commits?: number; apply?: boo
         continue;
       }
 
+      if (ctxRefItem.action === 'repo') {
+        // repo action is plan-level only, no task validation needed
+        matched.push({
+          hash,
+          date,
+          timestamp,
+          subject,
+          slug: ctxRefItem.slug,
+          task: ctxRefItem.task,
+          action: ctxRefItem.action,
+          repo: ctxRefItem.repo,
+          type: matchedType,
+        });
+        continue;
+      }
+
       if (matchedType === 'plan' && ctxRefItem.task) {
         const plan = readProgressFile(matchedFilePath);
         if (!plan) {
@@ -625,6 +647,7 @@ export function gitReconcile(root: string, opts: { commits?: number; apply?: boo
         slug: ctxRefItem.slug,
         task: ctxRefItem.task,
         action: ctxRefItem.action,
+        repo: ctxRefItem.repo,
         type: matchedType,
       });
     }
@@ -698,7 +721,11 @@ export function gitReconcile(root: string, opts: { commits?: number; apply?: boo
         (fm.tasks as { id: string; status: string; completed?: string; started?: string }[] | undefined) || [];
 
       for (const gitRef of gitRefs) {
-        if (gitRef.action === 'close') {
+        if (gitRef.action === 'repo') {
+          if (gitRef.repo) {
+            fm.repo = gitRef.repo;
+          }
+        } else if (gitRef.action === 'close') {
           if (gitRef.task) {
             const task = tasksList.find((t) => t.id === gitRef.task);
             if (task && task.status !== 'done') {
