@@ -101,7 +101,7 @@ export function serializePlanFile(plan: PlanFile): string {
   const yamlStr = yaml.dump(plan.frontmatter, {
     lineWidth: 120,
     quotingType: "'",
-    forceQuotes: false,
+    forceQuotes: true,
     noCompatMode: true,
   });
   return `---\n${yamlStr}---\n${plan.body}\n`;
