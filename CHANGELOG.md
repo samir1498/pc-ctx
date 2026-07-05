@@ -1,5 +1,16 @@
 # Changelog
 
+## @pc-ctx/core 0.8.0 / @pc-ctx/cli 0.9.1 / @pc-ctx/mcp 0.7.1 — 2026-07-05
+
+### Added
+
+- **`repo:` trailer action**: `parseCtxTrailers` now recognizes `ctx: <plan> repo:<slug>` in git commit messages. `gitReconcile` writes `repo: <slug>` to plan frontmatter on `--apply`. Links plans to their registered repo in `repos/`.
+- **`repos/` domain scaffold**: 14 repo entries in personal-context mapping each project's stack, commands, rules, and `current_plan`.
+
+### Fixed
+
+- **YAML frontmatter corruption**: `writeProgressFile` now uses `forceQuotes: true` in `yaml.dump()` to prevent `js-yaml` from misparsing unquoted colon-space sequences (e.g. `desc: Add repo: action...`) — was causing double frontmatter blocks on reconcile apply.
+
 ## @pc-ctx/core 0.7.0 / @pc-ctx/cli 0.9.0 / @pc-ctx/mcp 0.7.0 — 2026-07-04
 
 ### Added
