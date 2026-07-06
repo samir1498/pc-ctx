@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { readAllPlans, slugify, writePlanFileAtomic } from '@pc-ctx/core';
 import { z } from 'zod';
+import { toError, toJson, truncateList } from '../format.js';
 import { registerAddAcceptanceTool } from './add-acceptance.js';
 import { registerAddRefTool } from './add-ref.js';
 import { registerAddTaskTool } from './add-task.js';
@@ -30,7 +31,6 @@ import { registerStatusTool } from './status.js';
 import { registerSyncTool } from './sync.js';
 import { registerTaskStatusTool } from './task-status.js';
 import { registerValidateTool } from './validate.js';
-import { toError, toJson, truncateList } from '../format.js';
 
 function registerArchiveTools(server: McpServer, archiveDir: string) {
   // archive_list with since/until filters
@@ -98,7 +98,10 @@ function registerArchiveTools(server: McpServer, archiveDir: string) {
       title: z.string().describe('Title'),
       category: z.string().optional().describe('Category (default: archive)'),
       tldr: z.string().optional().describe('One-line summary (default: title)'),
-      body: z.string().optional().describe('Markdown body (written verbatim, including the # heading). Omit for the default stub.'),
+      body: z
+        .string()
+        .optional()
+        .describe('Markdown body (written verbatim, including the # heading). Omit for the default stub.'),
     },
     async ({ title, category, tldr, body }) => {
       try {
@@ -167,11 +170,11 @@ export function registerAllTools(
     ['processes', join(ctx.root, 'processes'), 'process'],
     ['references', join(ctx.root, 'references'), 'reference'],
     ['handoffs', join(ctx.root, 'handoffs'), 'session handoff'],
-    ['repos', join(ctx.root, 'repos'), 'repo'],
   ];
   for (const [domain, dir, label] of genericDomains) {
     registerDomainTools(server, { root: ctx.root }, domain, dir, label);
   }
+  registerDomainTools(server, { root: ctx.root }, 'repos', join(ctx.root, 'repos'), 'repo', { layout: 'folder' });
 
   // Archive uses custom tools with since/until on _list
   const archiveDir = join(ctx.root, 'archive');

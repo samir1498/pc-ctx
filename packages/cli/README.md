@@ -63,13 +63,21 @@ npx @pc-ctx/cli status
 
 ### Domain management (`ctx <domain> <subcommand>`)
 
-Domains: `ideas`, `processes`, `references`, `archive`, `handoffs`
+Domains: `ideas`, `processes`, `references`, `archive`, `handoffs`, `repos`
 
 | Subcommand | Description |
 |------------|-------------|
 | `list` | List all items |
 | `show <slug>` | Show item details |
 | `add <title>` | Create a new item (`--body`/`--body-file`) |
+
+`repos` is the exception: instead of a flat `<date>-<slug>.md` file, `repos add` writes
+`repos/<slug>/repo.md` (folder-per-repo, no date prefix), leaving room for future companion
+files (e.g. `map.md`) under the same folder. `repos` also has one extra subcommand:
+
+| Subcommand | Description |
+|------------|-------------|
+| `sync` | For every `repos/<slug>/repo.md` with a `path` field: validate the path exists, detect its git `remote` and current `branch`, and write them back into frontmatter |
 
 ## Configuration
 

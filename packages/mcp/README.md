@@ -60,6 +60,13 @@ Each domain below gets `_list`, `_show`, and `_add` tools.
 - **processes** — `processes_list`, `processes_show`, `processes_add`
 - **references** — `references_list`, `references_show`, `references_add`
 - **handoffs** — `handoffs_list`, `handoffs_show`, `handoffs_add`
+- **repos** — `repos_list`, `repos_show`, `repos_add`. Unlike the flat domains above, `repos`
+  uses a **folder layout**: `repos_add` writes `repos/<slug>/repo.md` (no date prefix), not a
+  flat `repos/<date>-<slug>.md`. This leaves room for companion files under the same folder in
+  future (e.g. a `map.md`). `repos_show`/`repos_list` work the same either way since they read
+  recursively. A repo entry's frontmatter may carry a `path` (absolute path to the repo on disk)
+  plus `remote`/`branch`, which the CLI's `ctx repos sync` command detects and fills in — there
+  is no MCP equivalent of `sync` yet, edit `path` by hand or via `repos_add`'s `body`.
 
 ### Utility
 
