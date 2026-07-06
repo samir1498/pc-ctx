@@ -10,7 +10,10 @@ import { parsePlanFile, writePlanFileAtomic } from './index.js';
  *
  * Idempotent: skips plans that already have completed_at set.
  */
-export function backfillCompletedAt(plansDir: string, rootDir: string): {
+export function backfillCompletedAt(
+  plansDir: string,
+  rootDir: string,
+): {
   backfilled: number;
   skipped: number;
   errors: string[];

@@ -1,6 +1,6 @@
 {
   "name": "@pc-ctx/cli",
-  "version": "0.9.2",
+  "version": "0.10.0",
   "description": "CLI for managing markdown-based plans with YAML frontmatter — list, show, status, validate, sync, and more",
   "type": "module",
   "bin": {
@@ -11,11 +11,7 @@
       "import": "./dist/index.js"
     }
   },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
+  "files": ["dist", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",

@@ -1,5 +1,23 @@
 # Changelog
 
+## @pc-ctx/cli 0.10.0 / @pc-ctx/mcp 0.8.0 — 2026-07-06
+
+### Changed
+
+- **`repos` domain now uses a folder-per-repo layout**: `ctx repos add` / `repos_add` write
+  `repos/<slug>/repo.md` instead of a flat `repos/<date>-<slug>.md`. This makes room for future
+  companion files under the same folder (e.g. a `map.md`). `list`/`show` are unaffected since
+  they already read recursively. Documented in both READMEs. Breaking for anyone who already
+  scaffolded flat `repos/*.md` files under the previous (2026-07-05) release — move each file to
+  `repos/<slug>/repo.md` by hand.
+
+### Fixed
+
+- **`ctx repos sync` wrote every repo entry back to the wrong path**: it hardcoded `dir:
+  REPOS_DIR` instead of the entry's own (possibly nested) directory, which would have silently
+  duplicated foldered entries as flat files at the domain root on the first sync. Now uses the
+  parsed entry's `dir`.
+
 ## @pc-ctx/core 0.8.2 / @pc-ctx/cli 0.9.2 / @pc-ctx/mcp 0.7.2 — 2026-07-05
 
 ### Added

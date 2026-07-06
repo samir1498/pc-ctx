@@ -166,6 +166,27 @@ describe('MCP server integration', () => {
     expect(onDisk).toContain('Idea content.');
   });
 
+  it('repos_add writes to a per-repo folder (repos/<slug>/repo.md), not a flat dated file', async () => {
+    const result = await call('repos_add', { title: 'Body Repo', body: '# Body Repo\n\nRepo content.\n' });
+    expect(result.isError).toBeFalsy();
+    const { slug, filename } = JSON.parse(textOf(result));
+    expect(slug).toBe('body-repo');
+    expect(filename).toBe(join('body-repo', 'repo.md'));
+    const onDisk = readFileSync(join(tmpDir, 'repos', filename), 'utf-8');
+    expect(onDisk).toContain('Repo content.');
+  });
+
+  it('repos_list and repos_show see the foldered repo entry', async () => {
+    const listResult = await call('repos_list');
+    const rows = JSON.parse(textOf(listResult));
+    const items = Array.isArray(rows) ? rows : rows.items;
+    expect(items.some((r: { slug: string }) => r.slug === 'body-repo')).toBe(true);
+
+    const showResult = await call('repos_show', { slug: 'body-repo' });
+    const repo = JSON.parse(textOf(showResult));
+    expect(repo.title).toBe('Body Repo');
+  });
+
   it('registers the roadmap entry mutation tools', async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name);

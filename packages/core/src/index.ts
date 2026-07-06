@@ -524,17 +524,26 @@ export interface GitReconcileResult {
   unmatched: { hash: string; subject: string; trailer: string; reason: string }[];
 }
 
-function parseCtxTrailers(body: string): { slug: string; task?: string; action: 'start' | 'progress' | 'close' | 'repo'; repo?: string }[] {
+function parseCtxTrailers(
+  body: string,
+): { slug: string; task?: string; action: 'start' | 'progress' | 'close' | 'repo'; repo?: string }[] {
   const results: { slug: string; task?: string; action: 'start' | 'progress' | 'close' | 'repo'; repo?: string }[] = [];
   const lines = body.split('\n');
   for (const line of lines) {
-    const match = line.match(/^ctx:\s*([a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)?)\s+(start|progress|close|repo:[a-zA-Z0-9_-]+)\s*$/);
+    const match = line.match(
+      /^ctx:\s*([a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)?)\s+(start|progress|close|repo:[a-zA-Z0-9_-]+)\s*$/,
+    );
     if (match) {
       const ref = match[1]!;
       const rawAction = match[2]!;
       const slashIdx = ref.indexOf('/');
       if (rawAction.startsWith('repo:')) {
-        results.push({ slug: ref.slice(0, slashIdx === -1 ? ref.length : slashIdx), task: slashIdx === -1 ? undefined : ref.slice(slashIdx + 1), action: 'repo', repo: rawAction.slice(5) });
+        results.push({
+          slug: ref.slice(0, slashIdx === -1 ? ref.length : slashIdx),
+          task: slashIdx === -1 ? undefined : ref.slice(slashIdx + 1),
+          action: 'repo',
+          repo: rawAction.slice(5),
+        });
       } else {
         const action = rawAction as 'start' | 'progress' | 'close';
         if (slashIdx === -1) {

@@ -949,7 +949,13 @@ const configCmd = defineCommand({
   },
 });
 
-function makeDomainCmd(name: string, description: string, dir: string) {
+/**
+ * `layout: 'folder'` stores each item as `<dir>/<slug>/repo.md` instead of the
+ * default flat `<dir>/<today>-<slug>.md` — used by `repos` so a repo entry can grow
+ * companion files (e.g. a future `map.md`) alongside its frontmatter doc.
+ */
+function makeDomainCmd(name: string, description: string, dir: string, opts: { layout?: 'flat' | 'folder' } = {}) {
+  const layout = opts.layout ?? 'flat';
   const listCmd = defineCommand({
     meta: { name: 'list', description: `List all ${name}` },
     run() {
@@ -991,10 +997,11 @@ function makeDomainCmd(name: string, description: string, dir: string) {
     run({ args }) {
       const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       const slug = args.slug || slugify(args.title);
-      const filename = `${today}-${slug}.md`;
-      const filepath = join(dir, filename);
+      const filename = layout === 'folder' ? 'repo.md' : `${today}-${slug}.md`;
+      const itemDir = layout === 'folder' ? join(dir, slug) : dir;
+      const filepath = join(itemDir, filename);
       if (existsSync(filepath)) {
-        console.error(`error: "${filename}" already exists`);
+        console.error(`error: "${filepath}" already exists`);
         return;
       }
       // Every domain follows the same standardized required-field schema (REQUIRED_DOC_FIELDS).
@@ -1007,8 +1014,8 @@ function makeDomainCmd(name: string, description: string, dir: string) {
         tldr: args.tldr || args.title,
       } as unknown as PlanMeta;
       const body = resolveBody(args, `# ${args.title}\n`);
-      writePlanFileAtomic({ slug, filename, dir, frontmatter, body, raw: '' });
-      console.log(`ok: created ${filename}`);
+      writePlanFileAtomic({ slug, filename, dir: itemDir, frontmatter, body, raw: '' });
+      console.log(`ok: created ${join(itemDir, filename)}`);
     },
   });
 
@@ -1085,7 +1092,10 @@ const archiveCmd = makeDomainCmd('archive', 'Manage archived items', ARCHIVE_DIR
 const handoffsCmd = makeDomainCmd('handoffs', 'Manage session handoffs', HANDOFFS_DIR);
 
 const reposSyncCmd = defineCommand({
-  meta: { name: 'sync', description: 'Sync repo metadata from filesystem: validate paths, detect remotes, update stale fields' },
+  meta: {
+    name: 'sync',
+    description: 'Sync repo metadata from filesystem: validate paths, detect remotes, update stale fields',
+  },
   run() {
     const repos = readAllPlans(REPOS_DIR);
     let updated = 0;
@@ -1093,7 +1103,6 @@ const reposSyncCmd = defineCommand({
     let errors = 0;
     for (const repo of repos) {
       const fm = repo.frontmatter;
-      const filepath = join(REPOS_DIR, repo.filename);
       const repoPath = fm.path as string | undefined;
       const changed: string[] = [];
 
@@ -1106,23 +1115,38 @@ const reposSyncCmd = defineCommand({
 
         // Detect git remote
         try {
-          const remote = execSync(`git -C "${repoPath}" remote get-url origin 2>/dev/null`, { encoding: 'utf-8' }).trim();
+          const remote = execSync(`git -C "${repoPath}" remote get-url origin 2>/dev/null`, {
+            encoding: 'utf-8',
+          }).trim();
           if (remote && remote !== fm.remote) {
             changed.push(`remote: "${fm.remote || '—'}" → "${remote}"`);
             fm.remote = remote;
           }
-        } catch { /* not a git repo */ }
+        } catch {
+          /* not a git repo */
+        }
 
         // Detect current branch
         try {
-          const branch = execSync(`git -C "${repoPath}" rev-parse --abbrev-ref HEAD 2>/dev/null`, { encoding: 'utf-8' }).trim();
+          const branch = execSync(`git -C "${repoPath}" rev-parse --abbrev-ref HEAD 2>/dev/null`, {
+            encoding: 'utf-8',
+          }).trim();
           if (branch) fm.branch = branch;
-        } catch { /* not a git repo */ }
+        } catch {
+          /* not a git repo */
+        }
       }
 
       if (changed.length) {
         updated++;
-        writePlanFileAtomic({ slug: repo.slug, filename: repo.filename, dir: REPOS_DIR, frontmatter: fm as PlanMeta, body: repo.body, raw: '' });
+        writePlanFileAtomic({
+          slug: repo.slug,
+          filename: repo.filename,
+          dir: repo.dir,
+          frontmatter: fm as PlanMeta,
+          body: repo.body,
+          raw: '',
+        });
         for (const line of changed) console.log(`  ${fm.slug}: ${line}`);
       } else {
         unchanged++;
@@ -1133,7 +1157,7 @@ const reposSyncCmd = defineCommand({
   },
 });
 
-const reposBaseCmd = makeDomainCmd('repos', 'Manage project repos', REPOS_DIR);
+const reposBaseCmd = makeDomainCmd('repos', 'Manage project repos', REPOS_DIR, { layout: 'folder' });
 const reposCmd = defineCommand({
   meta: { name: 'repos', description: 'Manage project repos' },
   subCommands: { ...reposBaseCmd.subCommands, sync: reposSyncCmd },
