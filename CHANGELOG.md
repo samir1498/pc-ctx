@@ -1,5 +1,22 @@
 # Changelog
 
+## @pc-ctx/cli 0.10.1 — 2026-07-16
+
+### Fixed
+
+- **CLI root resolution ignored `ctx config --root`**: domain commands (`plan`, `list`,
+  `show`, `research`, `ideas`, `processes`, `progress`, `repos`, etc.) resolved their root from
+  `PC_CTX_ROOT` or `process.cwd()` only — the `contentRoot` saved by `ctx config --root` was read
+  solely by `ctx ui`. Running any command from outside the context checkout (e.g. the parent
+  workspace root) silently returned an empty table or a bare "not found", as if the store were
+  actually empty. Root resolution is now `PC_CTX_ROOT` env > configured `contentRoot` > `cwd`,
+  consulted by every domain.
+- **Silent-empty footgun on missing store**: when the resolved root has no recognizable context
+  store (none of `plans/roadmaps/ideas/processes/progress/references/archive/handoffs/repos`
+  exist), commands now fail loudly with the path they looked at and a hint to `ctx config --root`,
+  instead of behaving as if the store were empty. `setup`/`init`/`config`/`ui` are exempt since
+  they don't require a pre-existing store.
+
 ## @pc-ctx/cli 0.10.0 / @pc-ctx/mcp 0.8.0 — 2026-07-06
 
 ### Changed

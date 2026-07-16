@@ -174,3 +174,99 @@ describe('CLI integration', () => {
     expect(onDisk).toContain('TODO: define goal');
   });
 });
+
+const ROOT_TEST_PLAN = `---
+title: Root Fallback Plan
+slug: root-fallback-plan
+status: active
+category: test
+created: 20260621
+tldr: Plan used to prove root resolution.
+---
+# Root Fallback Plan
+`;
+
+describe('CLI root resolution', () => {
+  let noStoreDir: string;
+  let storeDir: string;
+  let emptyHome: string;
+  let configuredHome: string;
+
+  beforeAll(() => {
+    noStoreDir = mkdtempSync(join(tmpdir(), 'pc-ctx-noroot-'));
+    storeDir = mkdtempSync(join(tmpdir(), 'pc-ctx-store-'));
+    emptyHome = mkdtempSync(join(tmpdir(), 'pc-ctx-home-empty-'));
+    configuredHome = mkdtempSync(join(tmpdir(), 'pc-ctx-home-cfg-'));
+
+    mkdirSync(join(storeDir, 'plans'), { recursive: true });
+    writeFileSync(join(storeDir, 'plans', 'root-fallback-plan.md'), ROOT_TEST_PLAN, 'utf-8');
+
+    mkdirSync(join(configuredHome, '.pc-ctx'), { recursive: true });
+    writeFileSync(join(configuredHome, '.pc-ctx', 'config.json'), JSON.stringify({ contentRoot: storeDir }), 'utf-8');
+  });
+
+  afterAll(() => {
+    rmSync(noStoreDir, { recursive: true, force: true });
+    rmSync(storeDir, { recursive: true, force: true });
+    rmSync(emptyHome, { recursive: true, force: true });
+    rmSync(configuredHome, { recursive: true, force: true });
+  });
+
+  // Runs `ctx <args>` with PC_CTX_ROOT/PC_CTX_RESEARCH_DIR stripped from the inherited
+  // environment (so only `envOverrides` — typically HOME and/or an explicit PC_CTX_ROOT —
+  // determine root resolution), from the given cwd.
+  function ctxEnv(
+    cwd: string,
+    envOverrides: Record<string, string>,
+    ...args: string[]
+  ): { stdout: string; stderr: string; exitCode: number } {
+    const { PC_CTX_ROOT: _root, PC_CTX_RESEARCH_DIR: _research, ...rest } = process.env;
+    const env = { ...rest, ...envOverrides };
+    try {
+      const stdout = execSync(`node ${ctxCli} ${args.join(' ')}`, { cwd, encoding: 'utf-8', env });
+      return { stdout, stderr: '', exitCode: 0 };
+    } catch (e: any) {
+      return { stdout: e.stdout?.toString() || '', stderr: e.stderr?.toString() || '', exitCode: e.status || 1 };
+    }
+  }
+
+  it('errors clearly, naming the path, when no context store is found (cwd fallback, no config)', () => {
+    const { stderr, exitCode } = ctxEnv(noStoreDir, { HOME: emptyHome }, 'list');
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain('no context store found');
+    expect(stderr).toContain(noStoreDir);
+    expect(stderr).toContain('ctx config --root');
+  });
+
+  it('cwd fallback still works when cwd itself is a valid context store', () => {
+    const { stdout, exitCode } = ctxEnv(storeDir, { HOME: emptyHome }, 'list');
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('root-fallback-plan');
+  });
+
+  it('respects the root saved by `ctx config --root` when invoked from an unrelated cwd', () => {
+    const { stdout, exitCode } = ctxEnv(noStoreDir, { HOME: configuredHome }, 'list');
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('root-fallback-plan');
+  });
+
+  it('show also resolves the configured root from an unrelated cwd', () => {
+    const { stdout, exitCode } = ctxEnv(noStoreDir, { HOME: configuredHome }, 'show', 'root-fallback-plan');
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('Root Fallback Plan');
+  });
+
+  it('explicit PC_CTX_ROOT env takes precedence over the configured root', () => {
+    // configuredHome's config.json points at storeDir (a valid store), but PC_CTX_ROOT
+    // here points at noStoreDir (empty) — env must win, so this should still error.
+    const { stderr, exitCode } = ctxEnv(noStoreDir, { HOME: configuredHome, PC_CTX_ROOT: noStoreDir }, 'list');
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain('no context store found');
+  });
+
+  it('`ctx config --show` works with no context store present (exempt from the store check)', () => {
+    const { stdout, exitCode } = ctxEnv(noStoreDir, { HOME: emptyHome }, 'config', '--show');
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('root:');
+  });
+});

@@ -32,7 +32,27 @@ import {
 } from '@pc-ctx/core';
 import { createMain, defineCommand } from 'citty';
 
-const ROOT = process.env.PC_CTX_ROOT || process.cwd();
+const CONFIG_PATH = join(homedir(), '.pc-ctx', 'config.json');
+
+function readConfig(): Record<string, unknown> {
+  try {
+    return JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'));
+  } catch {
+    return {};
+  }
+}
+
+// Root resolution order: explicit PC_CTX_ROOT env > saved `ctx config --root` > cwd.
+// Mirrors the MCP server's model (explicit root, no directory walk-up) so the CLI
+// and MCP never disagree about where "the context store" is.
+function resolveRoot(): string {
+  if (process.env.PC_CTX_ROOT) return process.env.PC_CTX_ROOT;
+  const cfg = readConfig();
+  if (typeof cfg.contentRoot === 'string' && cfg.contentRoot) return cfg.contentRoot;
+  return process.cwd();
+}
+
+const ROOT = resolveRoot();
 const PLANS_DIR = join(ROOT, 'plans');
 const ROADMAPS_DIR = join(ROOT, 'roadmaps');
 const RESEARCH_DIR = process.env.PC_CTX_RESEARCH_DIR || join(ROOT, '..', 'personal-research');
@@ -43,6 +63,39 @@ const REFERENCES_DIR = join(ROOT, 'references');
 const ARCHIVE_DIR = join(ROOT, 'archive');
 const HANDOFFS_DIR = join(ROOT, 'handoffs');
 const REPOS_DIR = join(ROOT, 'repos');
+
+// Commands that don't require an existing context store — they create one, configure
+// where it lives, or serve a cached UI asset.
+const STORE_CHECK_EXEMPT = new Set(['setup', 'init', 'config', 'ui']);
+
+function hasContextStore(): boolean {
+  return [
+    PLANS_DIR,
+    ROADMAPS_DIR,
+    IDEAS_DIR,
+    PROCESSES_DIR,
+    PROGRESS_DIR,
+    REFERENCES_DIR,
+    ARCHIVE_DIR,
+    HANDOFFS_DIR,
+    REPOS_DIR,
+  ].some((dir) => existsSync(dir));
+}
+
+// Kill the silent-empty footgun: an unresolved/wrong root used to make `list`/`show`
+// print an empty table or bare "not found" as if the store were just empty. Fail loudly
+// and name the path so the fix (`ctx config --root <path>` or PC_CTX_ROOT) is obvious.
+const invokedCommand = process.argv[2];
+if (
+  invokedCommand &&
+  !invokedCommand.startsWith('-') &&
+  !STORE_CHECK_EXEMPT.has(invokedCommand) &&
+  !hasContextStore()
+) {
+  console.error(`error: no context store found at "${ROOT}"`);
+  console.error('hint: run from inside a context checkout, set PC_CTX_ROOT, or run `ctx config --root <path>`');
+  process.exit(1);
+}
 
 // Resolve a markdown body from --body-file (takes precedence) or --body; falls back to the stub when neither is given.
 function resolveBody(args: { body?: string; 'body-file'?: string }, stub: string): string {
@@ -867,14 +920,12 @@ const uiCmd = defineCommand({
     let cfgContentRepo = '';
     let cfgContentBranch = '';
     let cfgContentRoot = '';
-    try {
-      const cfg = JSON.parse(readFileSync(join(homedir(), '.pc-ctx', 'config.json'), 'utf-8'));
-      pat = cfg.pat || '';
-      cfgContentRepo = cfg.contentRepo || '';
-      cfgContentBranch = cfg.contentBranch || '';
-      cfgContentRoot = cfg.contentRoot || '';
-    } catch {
-      /* ok */
+    {
+      const cfg = readConfig();
+      pat = (cfg.pat as string) || '';
+      cfgContentRepo = (cfg.contentRepo as string) || '';
+      cfgContentBranch = (cfg.contentBranch as string) || '';
+      cfgContentRoot = (cfg.contentRoot as string) || '';
     }
     const contentRepo = args['content-repo'] || cfgContentRepo || 'Observeone1/observeone-context';
     const contentBranch = args['content-branch'] || cfgContentBranch || 'main';
@@ -923,13 +974,7 @@ const configCmd = defineCommand({
     show: { type: 'boolean', description: 'Show current config', default: false, required: false },
   },
   run({ args }) {
-    const configPath = join(homedir(), '.pc-ctx', 'config.json');
-    let cfg: Record<string, unknown> = {};
-    try {
-      cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
-    } catch {
-      /* no config yet */
-    }
+    const cfg: Record<string, unknown> = readConfig();
     if (args.show) {
       console.log('PAT:', cfg.pat ? '(set)' : '(not set)');
       console.log('root:', cfg.contentRoot || '(not set)');
@@ -943,8 +988,8 @@ const configCmd = defineCommand({
     if (args.pat) cfg.pat = args.pat;
     if (args.root) cfg.contentRoot = resolve(args.root);
     if (args['content-repo']) cfg.contentRepo = args['content-repo'];
-    mkdirSync(dirname(configPath), { recursive: true });
-    writeFileSync(configPath, `${JSON.stringify(cfg, null, 2)}\n`, { mode: 0o600 });
+    mkdirSync(dirname(CONFIG_PATH), { recursive: true });
+    writeFileSync(CONFIG_PATH, `${JSON.stringify(cfg, null, 2)}\n`, { mode: 0o600 });
     console.log('Config saved');
   },
 });
