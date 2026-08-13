@@ -1,8 +1,8 @@
+import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { execSync } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   VALID_STATUSES,
@@ -10,6 +10,7 @@ import {
   findResearchFile,
   fmtPrio,
   fmtTasks,
+  gitReconcile,
   listResearchFiles,
   parsePlanFile,
   readAllPlans,
@@ -18,7 +19,6 @@ import {
   slugify,
   statusBadge,
   writePlanFileAtomic,
-  gitReconcile,
 } from './index';
 
 const VALID_PLAN = `---
@@ -324,11 +324,11 @@ describe('gitReconcile across the repos it records', () => {
 
     writeFileSync(
       join(store, 'plans', 'a-plan.md'),
-      `---\ntitle: A Plan\nslug: 'a-plan'\nstatus: 'active'\ncategory: 'test'\ncreated: 20260813\ntldr: 'x'\ntasks:\n  - id: 'T1'\n    desc: 'do it'\n    status: 'pending'\n---\n# A Plan\n`
+      `---\ntitle: A Plan\nslug: 'a-plan'\nstatus: 'active'\ncategory: 'test'\ncreated: 20260813\ntldr: 'x'\ntasks:\n  - id: 'T1'\n    desc: 'do it'\n    status: 'pending'\n---\n# A Plan\n`,
     );
     writeFileSync(
       join(store, 'repos', 'app', 'repo.md'),
-      `---\ntitle: App\nslug: 'app'\nstatus: 'active'\ncategory: 'backend'\ncreated: 20260813\ntldr: 'x'\npath: 'projects/app'\n---\n# App\n`
+      `---\ntitle: App\nslug: 'app'\nstatus: 'active'\ncategory: 'backend'\ncreated: 20260813\ntldr: 'x'\npath: 'projects/app'\n---\n# App\n`,
     );
 
     const git = (cmd: string, cwd: string) => execSync(cmd, { cwd, stdio: 'ignore' });
@@ -354,7 +354,7 @@ describe('gitReconcile across the repos it records', () => {
     mkdirSync(join(store, 'repos', 'ghost'), { recursive: true });
     writeFileSync(
       join(store, 'repos', 'ghost', 'repo.md'),
-      `---\ntitle: Ghost\nslug: 'ghost'\nstatus: 'active'\ncategory: 'backend'\ncreated: 20260813\ntldr: 'x'\npath: 'projects/nowhere'\n---\n# Ghost\n`
+      `---\ntitle: Ghost\nslug: 'ghost'\nstatus: 'active'\ncategory: 'backend'\ncreated: 20260813\ntldr: 'x'\npath: 'projects/nowhere'\n---\n# Ghost\n`,
     );
     expect(() => gitReconcile(store, { commits: 20 })).not.toThrow();
   });
