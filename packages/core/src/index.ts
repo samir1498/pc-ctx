@@ -9,7 +9,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { basename, dirname, join, relative } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import yaml from 'js-yaml';
 
 export interface Task {
@@ -557,13 +557,49 @@ function parseCtxTrailers(
   return results;
 }
 
+/**
+ * Every git repo worth scanning for `ctx:` trailers: the context store itself,
+ * plus each repo the `repos` domain records a `path` for.
+ *
+ * Without the second half, reconcile only ever sees commits pc-ctx made about
+ * itself, and a trailer written where the work happens is invisible.
+ */
+function reconcileDirs(root: string): string[] {
+  const dirs = [root];
+  const reposDir = join(root, 'repos');
+  if (!existsSync(reposDir)) return dirs;
+
+  // repo.md `path` is relative to the workspace root, which holds the store.
+  const workspace = dirname(root);
+  for (const entry of readdirSync(reposDir)) {
+    const file = join(reposDir, entry, 'repo.md');
+    if (!existsSync(file)) continue;
+    const repo = readProgressFile(file);
+    const path = repo?.frontmatter.path;
+    if (typeof path !== 'string' || !path) continue;
+    const resolved = isAbsolute(path) ? path : join(workspace, path);
+    if (existsSync(join(resolved, '.git'))) dirs.push(resolved);
+  }
+  return dirs;
+}
+
 export function gitReconcile(root: string, opts: { commits?: number; apply?: boolean } = {}): GitReconcileResult {
   const n = opts.commits ?? 50;
   const matched: GitCommitRef[] = [];
   const unmatched: { hash: string; subject: string; trailer: string; reason: string }[] = [];
 
-  const logOutput = execSync(`git log --format="%H|||%ct|||%s|||%b" -${n}`, { cwd: root, encoding: 'utf-8' });
-  const commits = logOutput.trim().split('\n|||\n');
+  const commits: string[] = [];
+  for (const dir of reconcileDirs(root)) {
+    try {
+      const logOutput = execSync(`git log --format="%H|||%ct|||%s|||%b" -${n}`, {
+        cwd: dir,
+        encoding: 'utf-8',
+      });
+      commits.push(...logOutput.trim().split('\n|||\n'));
+    } catch {
+      // A recorded path that is not a readable git repo is not an error here.
+    }
+  }
 
   for (const block of commits) {
     const parts = block.split('|||');

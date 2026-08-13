@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { execSync } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   VALID_STATUSES,
@@ -17,6 +18,7 @@ import {
   slugify,
   statusBadge,
   writePlanFileAtomic,
+  gitReconcile,
 } from './index';
 
 const VALID_PLAN = `---
@@ -305,5 +307,55 @@ describe('scaffoldContext', () => {
     expect(res.existing).toContain('plans/');
     expect(res.created).toContain('roadmaps/');
     expect(res.created).not.toContain('plans/');
+  });
+});
+
+describe('gitReconcile across the repos it records', () => {
+  // The trailer gets written where the work happens, which is never the
+  // context store. Before this, reconcile only read the store's own log.
+  const workspace = mkdtempSync(join(tmpdir(), 'ctx-reconcile-'));
+  const store = join(workspace, 'context');
+  const app = join(workspace, 'projects', 'app');
+
+  beforeAll(() => {
+    mkdirSync(join(store, 'plans'), { recursive: true });
+    mkdirSync(join(store, 'repos', 'app'), { recursive: true });
+    mkdirSync(app, { recursive: true });
+
+    writeFileSync(
+      join(store, 'plans', 'a-plan.md'),
+      `---\ntitle: A Plan\nslug: 'a-plan'\nstatus: 'active'\ncategory: 'test'\ncreated: 20260813\ntldr: 'x'\ntasks:\n  - id: 'T1'\n    desc: 'do it'\n    status: 'pending'\n---\n# A Plan\n`
+    );
+    writeFileSync(
+      join(store, 'repos', 'app', 'repo.md'),
+      `---\ntitle: App\nslug: 'app'\nstatus: 'active'\ncategory: 'backend'\ncreated: 20260813\ntldr: 'x'\npath: 'projects/app'\n---\n# App\n`
+    );
+
+    const git = (cmd: string, cwd: string) => execSync(cmd, { cwd, stdio: 'ignore' });
+    for (const dir of [store, app]) {
+      git('git init -q', dir);
+      git('git config user.email t@t.t', dir);
+      git('git config user.name t', dir);
+    }
+    git('git commit -q --allow-empty -m "chore: store"', store);
+    writeFileSync(join(app, 'f.txt'), 'x');
+    git('git add -A', app);
+    git('git commit -q -m "feat: ship it" -m "ctx: a-plan/T1 close"', app);
+  });
+
+  afterAll(() => rmSync(workspace, { recursive: true, force: true }));
+
+  it('matches a trailer written in an app repo, not just the store', () => {
+    const result = gitReconcile(store, { commits: 20 });
+    expect(result.matched.map((m) => `${m.slug}/${m.task}:${m.action}`)).toContain('a-plan/T1:close');
+  });
+
+  it('ignores a recorded path that is not a git repo', () => {
+    mkdirSync(join(store, 'repos', 'ghost'), { recursive: true });
+    writeFileSync(
+      join(store, 'repos', 'ghost', 'repo.md'),
+      `---\ntitle: Ghost\nslug: 'ghost'\nstatus: 'active'\ncategory: 'backend'\ncreated: 20260813\ntldr: 'x'\npath: 'projects/nowhere'\n---\n# Ghost\n`
+    );
+    expect(() => gitReconcile(store, { commits: 20 })).not.toThrow();
   });
 });
