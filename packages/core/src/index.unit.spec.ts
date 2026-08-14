@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   VALID_STATUSES,
   VALID_TASK_STATUSES,
+  domainDirs,
   findResearchFile,
   fmtPrio,
   fmtTasks,
@@ -16,6 +17,7 @@ import {
   serializePlanFile,
   slugify,
   statusBadge,
+  validateDomains,
   writePlanFileAtomic,
 } from './index';
 
@@ -153,6 +155,53 @@ describe('VALID_STATUSES', () => {
   it('contains expected statuses', () => {
     expect(VALID_STATUSES).toContain('active');
     expect(VALID_STATUSES).toContain('done');
+  });
+
+  it('accepts archived, used by roadmaps that shipped or were superseded', () => {
+    expect(VALID_STATUSES).toContain('archived');
+  });
+});
+
+describe('domainDirs', () => {
+  it('includes repos, whose entries were previously never validated', () => {
+    expect(domainDirs('/ctx').map(([name]) => name)).toContain('repos');
+  });
+});
+
+describe('validateDomains', () => {
+  let root = '';
+
+  const doc = (status: string) =>
+    `---\ntitle: T\nslug: s\nstatus: ${status}\ncategory: c\ncreated: 20260814\ntldr: t\n---\n# T\n`;
+
+  beforeAll(() => {
+    root = mkdtempSync(join(tmpdir(), 'pc-ctx-validate-'));
+    mkdirSync(join(root, 'roadmaps'), { recursive: true });
+    // repos entries are nested one level deeper than every other domain.
+    mkdirSync(join(root, 'repos', 'some-repo'), { recursive: true });
+  });
+
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+
+  it('accepts an archived roadmap', () => {
+    writeFileSync(join(root, 'roadmaps', 'r.md'), doc('archived'), 'utf-8');
+    const res = validateDomains([['roadmaps', join(root, 'roadmaps')]]);
+    expect(res.errors).toEqual([]);
+    expect(res.checked).toBe(1);
+  });
+
+  it('still rejects a status outside the enum', () => {
+    writeFileSync(join(root, 'roadmaps', 'r.md'), doc('dropped'), 'utf-8');
+    const res = validateDomains([['roadmaps', join(root, 'roadmaps')]]);
+    expect(res.errors).toHaveLength(1);
+    expect(res.errors[0]).toContain('invalid status "dropped"');
+  });
+
+  it('reaches repo.md nested under repos/<slug>/', () => {
+    writeFileSync(join(root, 'repos', 'some-repo', 'repo.md'), doc('nonsense'), 'utf-8');
+    const res = validateDomains([['repos', join(root, 'repos')]]);
+    expect(res.checked).toBe(1);
+    expect(res.errors[0]).toContain('invalid status "nonsense"');
   });
 });
 

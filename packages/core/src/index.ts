@@ -65,7 +65,9 @@ export interface ResolvedRef {
   description?: string;
 }
 
-export const VALID_STATUSES = ['active', 'paused', 'done', 'cancelled'];
+// 'archived' is roadmap-only in practice: a roadmap that shipped or was superseded but
+// stays readable in place, unlike plans which move to plans/archived/.
+export const VALID_STATUSES = ['active', 'paused', 'done', 'cancelled', 'archived'];
 export const VALID_TASK_STATUSES = ['pending', 'in-progress', 'done', 'blocked', 'cancelled'];
 /** Frontmatter fields required on every standardized document, across all domains. */
 export const REQUIRED_DOC_FIELDS = ['title', 'slug', 'status', 'category', 'created', 'tldr'];
@@ -143,6 +145,7 @@ export function domainDirs(root: string): [string, string][] {
     ['references', join(root, 'references')],
     ['archive', join(root, 'archive')],
     ['handoffs', join(root, 'handoffs')],
+    ['repos', join(root, 'repos')],
   ];
 }
 

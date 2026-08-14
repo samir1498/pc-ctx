@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { type PlanMeta, parsePlanFile } from '@pc-ctx/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildServer } from './server.js';
 
@@ -61,6 +62,14 @@ function textOf(result: ToolResult): string {
   return result.content.map((c) => c.text).join('\n');
 }
 
+// serializePlanFile writes with forceQuotes, so raw-substring assertions on scalar
+// values are format-coupled. Assert on the parsed frontmatter instead.
+function frontmatterOf(...parts: string[]): PlanMeta {
+  const plan = parsePlanFile(join(tmpDir, ...parts));
+  if (!plan) throw new Error(`could not parse ${parts.join('/')}`);
+  return plan.frontmatter;
+}
+
 describe('MCP server integration', () => {
   beforeAll(async () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'pc-ctx-mcp-it-'));
@@ -111,8 +120,7 @@ describe('MCP server integration', () => {
   it('plan_set_status round-trips to disk', async () => {
     const result = await call('plan_set_status', { slug: 'test-plan', status: 'done' });
     expect(result.isError).toBeFalsy();
-    const onDisk = readFileSync(join(tmpDir, 'plans', 'test-plan.md'), 'utf-8');
-    expect(onDisk).toContain('status: done');
+    expect(frontmatterOf('plans', 'test-plan.md').status).toBe('done');
     // reset
     await call('plan_set_status', { slug: 'test-plan', status: 'active' });
   });
@@ -120,9 +128,9 @@ describe('MCP server integration', () => {
   it('plan_add_task appends a task and round-trips', async () => {
     const result = await call('plan_add_task', { slug: 'test-plan', id: 'T2', desc: 'Added task' });
     expect(result.isError).toBeFalsy();
-    const onDisk = readFileSync(join(tmpDir, 'plans', 'test-plan.md'), 'utf-8');
-    expect(onDisk).toContain('id: T2');
-    expect(onDisk).toContain('Added task');
+    const added = frontmatterOf('plans', 'test-plan.md').tasks?.find((t) => t.id === 'T2');
+    expect(added).toBeDefined();
+    expect(added?.desc).toBe('Added task');
   });
 
   it('plan_add_task accepts the cancelled status', async () => {
@@ -197,9 +205,9 @@ describe('MCP server integration', () => {
   it('roadmap_set_entry_status updates status and preserves the note when omitted', async () => {
     const result = await call('roadmap_set_entry_status', { slug: 'test-roadmap', ref: 'test-plan', status: 'done' });
     expect(result.isError).toBeFalsy();
-    const onDisk = readFileSync(join(tmpDir, 'roadmaps', 'test-roadmap.md'), 'utf-8');
-    expect(onDisk).toContain('status: done');
-    expect(onDisk).toContain('Existing note.');
+    const entry = frontmatterOf('roadmaps', 'test-roadmap.md').entries?.find((e) => e.ref === 'test-plan');
+    expect(entry?.status).toBe('done');
+    expect(entry?.note).toBe('Existing note.');
   });
 
   it('roadmap_set_entry_status updates the note when provided', async () => {
@@ -210,10 +218,9 @@ describe('MCP server integration', () => {
       note: 'Updated note.',
     });
     expect(result.isError).toBeFalsy();
-    const onDisk = readFileSync(join(tmpDir, 'roadmaps', 'test-roadmap.md'), 'utf-8');
-    expect(onDisk).toContain('status: next');
-    expect(onDisk).toContain('Updated note.');
-    expect(onDisk).not.toContain('Existing note.');
+    const entry = frontmatterOf('roadmaps', 'test-roadmap.md').entries?.find((e) => e.ref === 'test-plan');
+    expect(entry?.status).toBe('next');
+    expect(entry?.note).toBe('Updated note.');
   });
 
   it('roadmap_set_entry_status errors on a missing entry ref', async () => {
@@ -235,9 +242,9 @@ describe('MCP server integration', () => {
       note: 'New entry.',
     });
     expect(result.isError).toBeFalsy();
-    const onDisk = readFileSync(join(tmpDir, 'roadmaps', 'test-roadmap.md'), 'utf-8');
-    expect(onDisk).toContain('ref: another-plan');
-    expect(onDisk).toContain('New entry.');
+    const entry = frontmatterOf('roadmaps', 'test-roadmap.md').entries?.find((e) => e.ref === 'another-plan');
+    expect(entry?.status).toBe('planned');
+    expect(entry?.note).toBe('New entry.');
   });
 
   it('roadmap_add_entry errors on a duplicate ref', async () => {
