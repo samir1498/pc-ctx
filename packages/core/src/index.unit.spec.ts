@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  SETTABLE_PLAN_STATUSES,
   VALID_STATUSES,
   VALID_TASK_STATUSES,
   domainDirs,
@@ -159,6 +160,11 @@ describe('VALID_STATUSES', () => {
 
   it('accepts archived, used by roadmaps that shipped or were superseded', () => {
     expect(VALID_STATUSES).toContain('archived');
+  });
+
+  it('does not let a plan be set to archived in place, which would bypass plans/archived/', () => {
+    expect(SETTABLE_PLAN_STATUSES).not.toContain('archived');
+    expect(SETTABLE_PLAN_STATUSES).toContain('done');
   });
 });
 

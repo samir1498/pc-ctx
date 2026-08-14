@@ -65,9 +65,10 @@ export interface ResolvedRef {
   description?: string;
 }
 
-// 'archived' is roadmap-only in practice: a roadmap that shipped or was superseded but
-// stays readable in place, unlike plans which move to plans/archived/.
 export const VALID_STATUSES = ['active', 'paused', 'done', 'cancelled', 'archived'];
+// Plans archive by moving to plans/archived/, so setting the status in place would
+// leave a plan readAllPlans still returns. Roadmaps have no such move and use it.
+export const SETTABLE_PLAN_STATUSES = VALID_STATUSES.filter((s) => s !== 'archived');
 export const VALID_TASK_STATUSES = ['pending', 'in-progress', 'done', 'blocked', 'cancelled'];
 /** Frontmatter fields required on every standardized document, across all domains. */
 export const REQUIRED_DOC_FIELDS = ['title', 'slug', 'status', 'category', 'created', 'tldr'];

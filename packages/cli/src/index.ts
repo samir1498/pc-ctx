@@ -7,7 +7,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import {
   type PlanMeta,
-  VALID_STATUSES,
+  SETTABLE_PLAN_STATUSES,
   VALID_TASK_STATUSES,
   checkStale,
   collectRefs,
@@ -299,7 +299,7 @@ const planSetStatusCmd = defineCommand({
     status: { type: 'positional', description: 'New status', required: true },
   },
   run({ args }) {
-    if (!VALID_STATUSES.includes(args.status)) {
+    if (!SETTABLE_PLAN_STATUSES.includes(args.status)) {
       console.error(`error: invalid status "${args.status}"`);
       return;
     }
