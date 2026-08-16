@@ -7,10 +7,11 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import {
   type PlanMeta,
-  VALID_STATUSES,
+  SETTABLE_PLAN_STATUSES,
   VALID_TASK_STATUSES,
   checkStale,
   collectRefs,
+  domainDirs,
   findPlan,
   findResearchFile,
   fmtCell,
@@ -114,17 +115,9 @@ const BODY_ARGS = {
   },
 };
 
-const ALL_DOMAINS: [string, string][] = [
-  ['plans', PLANS_DIR],
-  ['roadmaps', ROADMAPS_DIR],
-  ['ideas', IDEAS_DIR],
-  ['processes', PROCESSES_DIR],
-  ['progress', PROGRESS_DIR],
-  ['references', REFERENCES_DIR],
-  ['archive', ARCHIVE_DIR],
-  ['handoffs', HANDOFFS_DIR],
-  ['repos', REPOS_DIR],
-];
+// Shared with the MCP plan_validate tool. Kept as one list because the two drifted:
+// repos was in the CLI's copy and not in core's, so MCP validated 8 domains, CLI 9.
+const ALL_DOMAINS: [string, string][] = domainDirs(ROOT);
 
 const listCmd = defineCommand({
   meta: { name: 'list', description: 'List all plans' },
@@ -306,7 +299,7 @@ const planSetStatusCmd = defineCommand({
     status: { type: 'positional', description: 'New status', required: true },
   },
   run({ args }) {
-    if (!VALID_STATUSES.includes(args.status)) {
+    if (!SETTABLE_PLAN_STATUSES.includes(args.status)) {
       console.error(`error: invalid status "${args.status}"`);
       return;
     }

@@ -65,7 +65,10 @@ export interface ResolvedRef {
   description?: string;
 }
 
-export const VALID_STATUSES = ['active', 'paused', 'done', 'cancelled'];
+export const VALID_STATUSES = ['active', 'paused', 'done', 'cancelled', 'archived'];
+// Plans archive by moving to plans/archived/, so setting the status in place would
+// leave a plan readAllPlans still returns. Roadmaps have no such move and use it.
+export const SETTABLE_PLAN_STATUSES = VALID_STATUSES.filter((s) => s !== 'archived');
 export const VALID_TASK_STATUSES = ['pending', 'in-progress', 'done', 'blocked', 'cancelled'];
 /** Frontmatter fields required on every standardized document, across all domains. */
 export const REQUIRED_DOC_FIELDS = ['title', 'slug', 'status', 'category', 'created', 'tldr'];
@@ -143,6 +146,7 @@ export function domainDirs(root: string): [string, string][] {
     ['references', join(root, 'references')],
     ['archive', join(root, 'archive')],
     ['handoffs', join(root, 'handoffs')],
+    ['repos', join(root, 'repos')],
   ];
 }
 
