@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -118,11 +118,21 @@ describe('MCP server integration', () => {
   });
 
   it('plan_set_status round-trips to disk', async () => {
-    const result = await call('plan_set_status', { slug: 'test-plan', status: 'done' });
+    const result = await call('plan_set_status', { slug: 'test-plan', status: 'paused' });
     expect(result.isError).toBeFalsy();
-    expect(frontmatterOf('plans', 'test-plan.md').status).toBe('done');
+    expect(frontmatterOf('plans', 'test-plan.md').status).toBe('paused');
     // reset
     await call('plan_set_status', { slug: 'test-plan', status: 'active' });
+  });
+
+  it('plan_set_status done moves the plan to plans/archived/', async () => {
+    writeFileSync(join(tmpDir, 'plans', 'finish-me.md'), SAMPLE_PLAN.replace(/slug: test-plan/, 'slug: finish-me'));
+    const result = await call('plan_set_status', { slug: 'finish-me', status: 'done' });
+    expect(result.isError).toBeFalsy();
+    expect(existsSync(join(tmpDir, 'plans', 'finish-me.md'))).toBe(false);
+    const fm = frontmatterOf('plans/archived', 'finish-me.md');
+    expect(fm.status).toBe('done');
+    expect(fm.completed_at).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
   it('plan_add_task appends a task and round-trips', async () => {

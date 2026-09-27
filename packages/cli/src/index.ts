@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execSync, spawnSync } from 'node:child_process';
-import { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { Readable } from 'node:stream';
@@ -9,6 +9,7 @@ import {
   type PlanMeta,
   SETTABLE_PLAN_STATUSES,
   VALID_TASK_STATUSES,
+  archivePlanFile,
   checkStale,
   collectRefs,
   domainDirs,
@@ -26,6 +27,7 @@ import {
   readAllPlans,
   resolveRef,
   scaffoldContext,
+  setPlanStatus,
   slugify,
   statusBadge,
   validateDomains,
@@ -293,7 +295,7 @@ const validateCmd = defineCommand({
 });
 
 const planSetStatusCmd = defineCommand({
-  meta: { name: 'set-status', description: 'Update plan status' },
+  meta: { name: 'set-status', description: 'Update plan status (done also moves the plan to plans/archived/)' },
   args: {
     slug: { type: 'positional', description: 'Plan slug', required: true },
     status: { type: 'positional', description: 'New status', required: true },
@@ -303,17 +305,20 @@ const planSetStatusCmd = defineCommand({
       console.error(`error: invalid status "${args.status}"`);
       return;
     }
-    const plan = readAllPlans(PLANS_DIR).find((p) => p.slug === args.slug);
+    let plan: ReturnType<typeof setPlanStatus>;
+    try {
+      plan = setPlanStatus(PLANS_DIR, args.slug, args.status);
+    } catch (e) {
+      console.error(`error: ${(e as Error).message}`);
+      return;
+    }
     if (!plan) {
       console.error(`error: plan "${args.slug}" not found`);
       return;
     }
-    plan.frontmatter.status = args.status;
-    if (args.status === 'done' || args.status === 'cancelled') {
-      plan.frontmatter.completed_at = new Date().toISOString().slice(0, 10);
-    }
-    writePlanFileAtomic(plan);
-    console.log(`ok: ${args.slug} status → ${args.status}`);
+    console.log(
+      `ok: ${args.slug} status → ${args.status}${args.status === 'done' ? ', archived to plans/archived/' : ''}`,
+    );
   },
 });
 
@@ -534,11 +539,12 @@ const planArchiveCmd = defineCommand({
       console.error(`error: plan "${args.slug}" not found`);
       return;
     }
-    const archiveDir = join(PLANS_DIR, 'archived');
-    mkdirSync(archiveDir, { recursive: true });
-    const src = join(plan.dir, plan.filename);
-    const dest = join(archiveDir, plan.filename);
-    renameSync(src, dest);
+    try {
+      archivePlanFile(PLANS_DIR, plan.dir, plan.filename);
+    } catch (e) {
+      console.error(`error: ${(e as Error).message}`);
+      return;
+    }
     console.log(`ok: ${args.slug} archived to plans/archived/`);
   },
 });

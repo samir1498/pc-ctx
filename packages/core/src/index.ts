@@ -205,6 +205,37 @@ export function readAllPlans(dir: string, excludeArchived = true): PlanFile[] {
   return plans;
 }
 
+/** Moves a plan file into `<plansDir>/archived/`. Refuses to overwrite a same-named archived file. */
+export function archivePlanFile(plansDir: string, dir: string, filename: string): string {
+  const archiveDir = join(plansDir, 'archived');
+  const src = join(dir, filename);
+  const dest = join(archiveDir, filename);
+  if (src === dest) return dest;
+  if (existsSync(dest)) throw new Error(`plans/archived/${filename} already exists`);
+  mkdirSync(archiveDir, { recursive: true });
+  renameSync(src, dest);
+  return dest;
+}
+
+/**
+ * Sets a plan's status; done/cancelled stamp completed_at, and done also archives
+ * the plan. Returns the plan with `dir` pointing where the file now lives, or null.
+ */
+export function setPlanStatus(plansDir: string, slug: string, status: string, today = new Date()): PlanFile | null {
+  const plan = readAllPlans(plansDir).find((p) => p.slug === slug);
+  if (!plan) return null;
+  if (status === 'done' && existsSync(join(plansDir, 'archived', plan.filename))) {
+    throw new Error(`plans/archived/${plan.filename} already exists`);
+  }
+  plan.frontmatter.status = status;
+  if (status === 'done' || status === 'cancelled') {
+    plan.frontmatter.completed_at = today.toISOString().slice(0, 10);
+  }
+  writePlanFileAtomic(plan);
+  if (status === 'done') plan.dir = dirname(archivePlanFile(plansDir, plan.dir, plan.filename));
+  return plan;
+}
+
 export function findPlan(plansDir: string, roadmapsDir: string, slug: string): PlanFile | null {
   return [...readAllPlans(plansDir), ...readAllPlans(roadmapsDir)].find((p) => p.slug === slug) || null;
 }
@@ -568,6 +599,11 @@ function parseCtxTrailers(
  * Without the second half, reconcile only ever sees commits pc-ctx made about
  * itself, and a trailer written where the work happens is invisible.
  */
+// Stores write `slug: 'x'` (quoted); an unanchored `includes('slug: x')` missed those and matched `x-2`.
+function hasSlug(content: string, slug: string): boolean {
+  return new RegExp(`^slug:\\s*['"]?${slug}['"]?\\s*$`, 'm').test(content);
+}
+
 function reconcileDirs(root: string): string[] {
   const dirs = [root];
   const reposDir = join(root, 'repos');
@@ -621,7 +657,7 @@ export function gitReconcile(root: string, opts: { commits?: number; apply?: boo
       const planFiles = readdirSync(planDir).filter((f) => f.endsWith('.md'));
       const matchedPlanFile = planFiles.find((f) => {
         const content = readFileSync(join(planDir, f), 'utf-8');
-        return new RegExp(`slug:\\s*'?${ctxRefItem.slug}'?`).test(content);
+        return hasSlug(content, ctxRefItem.slug);
       });
       let matchedType: 'plan' | 'roadmap' = 'plan';
       let matchedFilePath: string | undefined;
@@ -634,7 +670,7 @@ export function gitReconcile(root: string, opts: { commits?: number; apply?: boo
           const roadmapFiles = readdirSync(roadmapDir).filter((f) => f.endsWith('.md'));
           const matchedRoadmapFile = roadmapFiles.find((f) => {
             const content = readFileSync(join(roadmapDir, f), 'utf-8');
-            return new RegExp(`slug:\\s*'?${ctxRefItem.slug}'?`).test(content);
+            return hasSlug(content, ctxRefItem.slug);
           });
           if (matchedRoadmapFile) {
             matchedFilePath = join(roadmapDir, matchedRoadmapFile);
@@ -718,7 +754,7 @@ export function gitReconcile(root: string, opts: { commits?: number; apply?: boo
         const roadmapDir = join(root, 'roadmaps');
         if (!existsSync(roadmapDir)) continue;
         const roadmapFilePath = readdirSync(roadmapDir).find(
-          (f) => f.endsWith('.md') && readFileSync(join(roadmapDir, f), 'utf-8').includes(`slug: ${slugVal}`),
+          (f) => f.endsWith('.md') && hasSlug(readFileSync(join(roadmapDir, f), 'utf-8'), slugVal),
         );
         if (!roadmapFilePath) continue;
         const roadmapPath = join(roadmapDir, roadmapFilePath);
@@ -758,7 +794,7 @@ export function gitReconcile(root: string, opts: { commits?: number; apply?: boo
 
       const plansDir = join(root, 'plans');
       const planFilePath = readdirSync(plansDir).find(
-        (f) => f.endsWith('.md') && readFileSync(join(plansDir, f), 'utf-8').includes(`slug: ${slugVal}`),
+        (f) => f.endsWith('.md') && hasSlug(readFileSync(join(plansDir, f), 'utf-8'), slugVal),
       );
       if (!planFilePath) continue;
       const planPath = join(plansDir, planFilePath);
@@ -819,6 +855,10 @@ export function gitReconcile(root: string, opts: { commits?: number; apply?: boo
 
       fm.tasks = tasksList;
       writeProgressFile(planPath, fm, planData.body);
+      // A same-named archived file is left for a human rather than aborting the whole apply.
+      if (fm.status === 'done' && !existsSync(join(plansDir, 'archived', planFilePath))) {
+        archivePlanFile(plansDir, plansDir, planFilePath);
+      }
     }
   }
 

@@ -1,33 +1,22 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { readAllPlans, writePlanFileAtomic } from '@pc-ctx/core';
+import { setPlanStatus } from '@pc-ctx/core';
 import { z } from 'zod';
 import { notFound, toError, toJson } from '../format.js';
 
 export function registerSetStatusTool(server: McpServer, ctx: { plansDir: string }) {
   server.tool(
     'plan_set_status',
-    'Update a plan status to active, paused, done, or cancelled.',
+    'Update a plan status to active, paused, done, or cancelled. Done also moves the plan to plans/archived/.',
     {
       slug: z.string().min(1).describe('Plan slug'),
       status: z.enum(['active', 'paused', 'done', 'cancelled']).describe('New status'),
     },
     async ({ slug, status }) => {
       try {
-        const plan = readAllPlans(ctx.plansDir).find((p) => p.slug === slug);
+        const plan = setPlanStatus(ctx.plansDir, slug, status);
         if (!plan) return notFound('plan', slug);
-        plan.frontmatter.status = status;
-        if (status === 'done' || status === 'cancelled') {
-          plan.frontmatter.completed_at = new Date().toISOString().slice(0, 10);
-        }
-        writePlanFileAtomic(plan);
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: toJson({ slug, status, ok: true } as { slug: string; status: string; ok: true }),
-            },
-          ],
-        };
+        const archived = status === 'done';
+        return { content: [{ type: 'text' as const, text: toJson({ slug, status, archived, ok: true }) }] };
       } catch (e) {
         return toError(String(e));
       }
