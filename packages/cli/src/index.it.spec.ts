@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -113,11 +113,20 @@ describe('CLI integration', () => {
   });
 
   it('plan set-status updates plan status', () => {
-    ctx('plan', 'set-status', 'test-plan', 'done');
+    ctx('plan', 'set-status', 'test-plan', 'paused');
     const { stdout } = ctx('show', 'test-plan');
-    expect(stdout).toContain('done');
+    expect(stdout).toContain('paused');
     // reset
     ctx('plan', 'set-status', 'test-plan', 'active');
+  });
+
+  it('plan set-status done moves the plan to plans/archived/', () => {
+    writePlan('finish-me.md', SAMPLE_PLAN.replace('slug: test-plan', 'slug: finish-me'));
+    const { stdout, exitCode } = ctx('plan', 'set-status', 'finish-me', 'done');
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('archived to plans/archived/');
+    expect(existsSync(join(tmpDir, 'plans', 'finish-me.md'))).toBe(false);
+    expect(readFileSync(join(tmpDir, 'plans', 'archived', 'finish-me.md'), 'utf-8')).toMatch(/^status: '?done'?$/m);
   });
 
   it('plan task-status updates task status', () => {
@@ -172,6 +181,31 @@ describe('CLI integration', () => {
     const match = stdout.match(/plans\/(\S+\.md)/);
     const onDisk = readFileSync(join(tmpDir, 'plans', match![1]), 'utf-8');
     expect(onDisk).toContain('TODO: define goal');
+  });
+
+  // Regression for "roadmap add reports ok but writes no file" (2026-07-12): em dash title + body file.
+  it('roadmap add writes a file that roadmap show can read back', () => {
+    const bodyPath = join(tmpDir, 'roadmap-body.md');
+    writeFileSync(bodyPath, '# Content roadmap\n\nRoadmap body.\n', 'utf-8');
+    const add = ctx(
+      'roadmap',
+      'add',
+      '"Content — Roadmap"',
+      '--priority',
+      '75',
+      '--tldr',
+      't',
+      '--body-file',
+      bodyPath,
+    );
+    expect(add.exitCode).toBe(0);
+    expect(add.stdout).toContain('content-roadmap');
+    const files = readdirSync(join(tmpDir, 'roadmaps')).filter((f) => f.endsWith('-content-roadmap.md'));
+    expect(files).toHaveLength(1);
+    expect(readFileSync(join(tmpDir, 'roadmaps', files[0]), 'utf-8')).toContain('Roadmap body.');
+    const show = ctx('roadmap', 'show', 'content-roadmap');
+    expect(show.exitCode).toBe(0);
+    expect(show.stdout).toContain('Content — Roadmap');
   });
 });
 

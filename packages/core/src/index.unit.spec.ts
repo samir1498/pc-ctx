@@ -413,4 +413,11 @@ describe('gitReconcile across the repos it records', () => {
     );
     expect(() => gitReconcile(store, { commits: 20 })).not.toThrow();
   });
+
+  it('--apply closes the quoted-slug plan and archives it once every task is done', () => {
+    gitReconcile(store, { commits: 20, apply: true });
+    expect(existsSync(join(store, 'plans', 'a-plan.md'))).toBe(false);
+    const archived = readFileSync(join(store, 'plans', 'archived', 'a-plan.md'), 'utf-8');
+    expect(archived).toMatch(/^status: '?done'?$/m);
+  });
 });
